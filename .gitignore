@@ -1,4 +1,5 @@
 backdoor_env/lib
+.csv
 backdoor_env/
 backdoor_env
 backdoor_env/lib/python3
@@ -14042,3 +14043,4 @@ mycode/imbd/models/goodnet.pth
 mycode/imbd/models/imbd.pth
 mycode/__pycache__/conv_net.cpython-38.pyc
 mycode/.DS_Store
+mycode/transformer/data/
