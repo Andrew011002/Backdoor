@@ -13,7 +13,7 @@ from copy import deepcopy
 class BasicImageEntity(Entity):
 
     def __init__(self, data: np.ndarray, label: int) -> None:
-        self.data = data
+        self.data = data.astype(np.uint8)
         self.label = label
         self.channels = data.shape[2]
         self.shape = data.shape
@@ -86,9 +86,9 @@ class GrayScaleImageTransform(Transform):
     def do(self, input_obj: Entity) -> Entity:
         data = input_obj.get_data()
         r, g, b = data[:,:,0], data[:,:,1], data[:,:,2]
-        gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+        data = 0.2989 * r + 0.5870 * g + 0.1140 * b
         new_obj = deepcopy(input_obj)
-        new_obj.data = gray.astype(np.uint8)
+        new_obj.data = data.astype(np.uint8)
         return new_obj
 
 class UpScaleImageTransform(Transform):
@@ -114,9 +114,11 @@ class DownScaleImageTransform(Transform):
 
 class TargetLabel(Transform):
 
-    def do(self, input_obj: Entity, target_label: int) -> Entity:
+    def do(self, input_obj: Entity, target_labels: dict) -> Entity:
+        label = input_obj.get_label()
+        target = target_labels.get(label, KeyError)
         new_obj = deepcopy(input_obj)
-        new_obj.label = target_label
+        new_obj.label = target
         return new_obj
 
 class ImageMerge(Merge):
@@ -130,13 +132,12 @@ class ImageMerge(Merge):
             h = random_state_obj.randint(0, bg_shape[0] - fg_shape[0])
             w = random_state_obj.randint(0, bg_shape[1] - fg_shape[1])
             pos = (h, w)
-        data = obj_1.get_data()
+        data = deepcopy(obj_1.get_data())
         data[pos[0]: pos[0] + fg_shape[0], pos[1]: pos[1] + fg_shape[1]] = obj_2.get_data()
         new_obj = deepcopy(obj_1)
         new_obj.data = data
         return new_obj
             
-
 # Text Poisoning
 
 class BasicTextEntity(Entity):
@@ -158,22 +159,28 @@ class BasicTextEntity(Entity):
     def __str__(self) -> str:
         return self.text
 
+    def __len__(self) -> int:
+        return self.data.shape[0]
+
 class RareWordTrigger(Entity):
 
     def __init__(self, word: str) -> None:
         if len(word.split()) > 1:
             raise ValueError('Word must be a single word')
-        self.word = word
+        self.text = word
         self.data = np.array([word])
 
     def get_text(self) -> str:
-        return self.word
+        return self.text
 
     def get_data(self) -> np.ndarray:
         return self.data
 
     def __str__(self) -> str:
-        return self.word
+        return self.text
+
+    def __len__(self) -> int:
+        return 1
 
 class TextSequenceTrigger(Entity):
 
@@ -189,6 +196,9 @@ class TextSequenceTrigger(Entity):
 
     def __str__(self) -> str:
         return self.text
+
+    def __len__(self) -> int:
+        return self.data.shape[0]
 
 class LowerCaseTextTransform(Transform):
 
@@ -214,26 +224,44 @@ class RemovePunctuationTextTransform(Transform):
 
     def do(self, input_obj: Entity, punctuation: set=None) -> Entity:
         data = input_obj.get_data()
-        for i in range(data.shape[0]):
-            word = data[i]
-            word = ''.join([char for char in word if char not in punctuation])
-            data[i] = word
-        text = ' '.join(data)
+        new_data = []
+        for word in data:
+            word = ''.join([c for c in word if c not in punctuation])
+            if word:
+                new_data.append(word)
+        text = ' '.join(new_data)
         new_obj = deepcopy(input_obj)
         new_obj.text = text
-        new_obj.data = data
+        new_obj.data = np.array(new_data)
         return new_obj
 
 class RemoveStopWordsTextTransform(Transform):
 
     def do(self, input_obj: Entity, stopwords: set=None) -> Entity:
         data = input_obj.get_data()
-        data = [word for word in data if word not in stopwords]
+        data = [word for word in data if word.lower() not in stopwords]
         text = ' '.join(data)
         new_obj = deepcopy(input_obj)
         new_obj.text = text
         new_obj.data = data
         return new_obj
+
+class TextInsertMerge(Merge):
+
+    def do(self, obj_1: Entity, obj_2: Entity, pos: int=None, random_state_obj: RandomState=None) -> Entity:
+        data = obj_1.get_data()
+        label = obj_1.get_label()
+        inserts = obj_2.get_data()
+        max_insert = len(data) - 1
+        if random_state_obj is None:
+            random_state_obj = RandomState()
+        if pos is None:
+            pos = random_state_obj.randint(0, max_insert)
+        data = np.insert(data, pos, inserts)
+        text = ' '.join(data)
+        return BasicTextEntity(text, label)
+
+        
 
 
         
