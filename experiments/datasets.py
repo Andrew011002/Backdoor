@@ -1,6 +1,9 @@
+import numpy as np
 import torchvision
+import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+from torch.utils.data import TensorDataset
 import os
 path = os.path.abspath(os.path.dirname(__file__))
 
@@ -16,6 +19,12 @@ def load_dataset(name: str, transforms: list=None, path: str='./data', download:
     trainset = dataset(root=path, train=True, download=download, transform=transforms)
     testset = dataset(root=path, train=False, download=download, transform=transforms)
     return trainset, testset
+
+def entity_to_dataset(data: np.ndarray) -> TensorDataset:
+    inputs = np.array(entity.get_data() for entity in data)
+    labels = np.array(entity.get_label() for entity in data)
+    return TensorDataset(torch.Tensor(inputs), torch.LongTensor(labels))
+
 
 def create_dataloader(dataset: Dataset, batch_size: int, shuffle=False, n_workers: int=0, drop_last=False) -> DataLoader:
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=n_workers, drop_last=drop_last)

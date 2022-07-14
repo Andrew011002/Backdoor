@@ -31,10 +31,6 @@ class BasicImageEntity(Entity):
     def show(self, cmap=None, interpolation=None):
         plt.imshow(self.data, cmap=cmap, interpolation=interpolation)
         plt.show()
-    
-    # returns the tensor of the image
-    def tensor(self):
-        return torch.from_numpy(self.data)
 
 class SquarePatch(Entity):
 
