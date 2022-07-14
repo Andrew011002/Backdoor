@@ -171,6 +171,7 @@ class ImageAttackPipeline(Pipeline):
 
         return injected
 
+# create entities of desired entity class from numpy array
 def create_entities(data: np.ndarray, labels: np.ndarray, entity_class: Entity) -> np.ndarray:
     return np.array([entity_class(obj, label) for obj, label in zip(data, labels)])
 
