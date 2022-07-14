@@ -16,24 +16,24 @@ class FeedForwardNetwork(nn.Module):
         super(FeedForwardNetwork, self).__init__()
         self.config = config
         self.input_dim = np.prod(list(input_shape)) # ex (4, 4, 3) img -> 4 * 4 * 3 = 48
-        self.feed_forward = self.build()
         self.relu = nn.ReLU()
+        self.feed_forward = self.build()
         self.out = nn.Linear(64, classes)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x) -> torch.Tensor:
         x = torch.flatten(x, 1)
-        for layer in self.feed_forward:
-            x = self.relu(layer(x))
+        x = self.feed_forward(x)
         x = self.dropout(x)
-        x = self.out(x)
-        return x
+        out = self.out(x)
+        return out
 
     def build(self) -> nn.Sequential:
         layers = []
         config = configs.get(self.config, KeyError)
         for hidden_layer in config:
             layers.append(nn.Linear(self.input_dim, hidden_layer))
+            layers.append(self.relu)
             self.input_dim = hidden_layer
         
         feed_forward = nn.Sequential(*layers)
