@@ -150,13 +150,13 @@ class ImageAttackPipeline(Pipeline):
             random_state_obj = RandomState()
 
         # set meta data
-        n = imglist.shape[1]
+        n = imglist.shape[0]
         m = int(pct * n)
         self.indices = random_state_obj.randint(0, n, m)
         self.targets = targets
 
         injected = deepcopy(imglist) # create injected array
-        patch = SquarePatch(patch_color, patch_size, channels=imglist.shape[3]) # define trigger patch
+        patch = SquarePatch(patch_color, patch_size, channels=imglist[0].shape[2]) # define trigger patch
         # poison generated indices
         for i in self.indices:
             entity = imglist[i]
