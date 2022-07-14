@@ -1,7 +1,7 @@
-backdoor_env/lib
 .csv
 .DS_Store
 .pth
+.pyc
 backdoor_env/
 mycode/mnist/__pycache__/
 mycode/mnist/data/
@@ -11,6 +11,7 @@ mycode/trojai_api/data/
 mycode/imbd/__pycache__/
 mycode/imbd/data/
 mycode/imbd/models/
-mycode/__pycache__/conv_net.cpython-38.pyc
+mycode/__pycache__/
 mycode/transformer/data/
 experiments/data/
+experiments/__pycache__/

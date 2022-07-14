@@ -17,7 +17,14 @@ class BasicImageEntity(Entity):
         self.data = data.astype(np.uint8)
         self.label = label
         self.shape = data.shape
-        self.channels = data.shape[2]
+
+        # handling 2 dimensional images
+        try:
+            self.channels = data.shape[2]
+        except:
+            self.data = np.expand_dims(data, axis=-1)
+            self.shape = self.data.shape
+            self.channels = self.data.shape[2]
 
     # returns numpy array of patch
     def get_data(self):
