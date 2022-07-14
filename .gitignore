@@ -14044,3 +14044,4 @@ mycode/imbd/models/imbd.pth
 mycode/__pycache__/conv_net.cpython-38.pyc
 mycode/.DS_Store
 mycode/transformer/data/
+experiments/cv/data/

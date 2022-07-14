@@ -2,8 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.random import RandomState
 from trojai.datagen.entity import Entity
-from trojai.datagen.image_entity import ImageEntity
-from trojai.datagen.text_entity import TextEntity
 from trojai.datagen.transform_interface import Transform
 from trojai.datagen.merge_interface import Merge
 from copy import deepcopy
@@ -93,7 +91,7 @@ class GrayScaleImageTransform(Transform):
 
 class UpScaleImageTransform(Transform):
 
-    def do(self, input_obj: ImageEntity, scale_factor: int=2) -> ImageEntity:
+    def do(self, input_obj: Entity, scale_factor: int=2) -> Entity:
         data = input_obj.get_data()
         new_obj = deepcopy(input_obj)
         data = np.repeat(data, scale_factor, axis=0)
@@ -104,7 +102,7 @@ class UpScaleImageTransform(Transform):
 
 class DownScaleImageTransform(Transform):
 
-    def do(self, input_obj: ImageEntity, scale_factor: int=2) -> ImageEntity:
+    def do(self, input_obj: Entity, scale_factor: int=2) -> Entity:
         data = input_obj.get_data()
         new_obj = deepcopy(input_obj)
         data = data[::scale_factor, ::scale_factor]
@@ -260,6 +258,9 @@ class TextInsertMerge(Merge):
         data = np.insert(data, pos, inserts)
         text = ' '.join(data)
         return BasicTextEntity(text, label)
+
+
+
 
         
 
