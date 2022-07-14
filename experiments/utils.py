@@ -22,7 +22,7 @@ class BasicImageEntity(Entity):
         try:
             self.channels = data.shape[2]
         except:
-            self.data = np.expand_dims(data, axis=-1)
+            self.data = np.expand_dims(data, axis=-1).astype(np.uint8)
             self.shape = self.data.shape
             self.channels = self.data.shape[2]
 
@@ -36,6 +36,9 @@ class BasicImageEntity(Entity):
 
     # shows the image
     def show(self, cmap=None, interpolation=None):
+        # black & white images
+        if self.channels == 1:
+            cmap = 'gray'
         plt.imshow(self.data, cmap=cmap, interpolation=interpolation)
         plt.show()
 
@@ -105,8 +108,11 @@ class GrayScaleImageTransform(Transform):
         data = input_obj.get_data()
         r, g, b = data[:,:,0], data[:,:,1], data[:,:,2]
         data = 0.2989 * r + 0.5870 * g + 0.1140 * b
+        data = np.expand_dims(data, axis=-1).astype(np.uint8)
         new_obj = deepcopy(input_obj)
-        new_obj.data = data.astype(np.uint8)
+        new_obj.data = data
+        new_obj.shape = data.shape
+        new_obj.channels = data.shape[2]
         return new_obj
 
 class TargetLabelTransform(Transform):
@@ -136,10 +142,26 @@ class ImageMerge(Merge):
         
         # overlay foreground on background -> create new entity
         data = deepcopy(obj_1.get_data())
-        data[pos[0]: pos[0] + fg_shape[0], pos[1]: pos[1] + fg_shape[1]] = obj_2.get_data()
+        data[pos[0]: pos[0] + fg_shape[0], pos[1]: pos[1] + fg_shape[1]] = deepcopy(obj_2.get_data())
         new_obj = deepcopy(obj_1)
         new_obj.data = data
         return new_obj
+
+class BasicImageTransformPipeline(Pipeline):
+
+    def process(self, entities: np.ndarray, transforms: list=None, random_state_obj: RandomState=None) -> Entity:
+        # define params
+        if random_state_obj is None:
+            random_state_obj = RandomState()
+
+        modified = []
+        # transform entities
+        for entity in entities:
+            for transform in transforms:
+                entity = transform().do(entity, random_state_obj)
+            modified.append(entity)
+
+        return np.array(entities)
             
 class ImageAttackPipeline(Pipeline):
 
@@ -148,7 +170,7 @@ class ImageAttackPipeline(Pipeline):
         self.indices = None
         self.targets = None
 
-    def process(self, imglist: np.ndarray, transforms: list=None, pct: float=0.2, patch_color: str='random', 
+    def process(self, entities: np.ndarray, transforms: list=None, pct: float=0.2, patch_color: str='random', 
     patch_size: tuple=(3, 3), placement: tuple=None, targets: dict=None,  random_state_obj: RandomState=None) -> np.ndarray:
         # define required params
         if transforms is None:
@@ -157,19 +179,19 @@ class ImageAttackPipeline(Pipeline):
             random_state_obj = RandomState()
 
         # set meta data
-        n = imglist.shape[0]
+        n = entities.shape[0]
         m = int(pct * n)
         self.indices = random_state_obj.randint(0, n, m)
         self.targets = targets
 
-        injected = deepcopy(imglist) # create injected array
-        patch = SquarePatch(patch_color, patch_size, channels=imglist[0].shape[2]) # define trigger patch
+        injected = deepcopy(entities) # create injected array
+        patch = SquarePatch(patch_color, patch_size, channels=entities[0].shape[2]) # define trigger patch
         # poison generated indices
         for i in self.indices:
-            entity = imglist[i]
+            entity = entities[i]
             # make transformations to images
             for transform in transforms:
-                entity = transform.do(entity, random_state_obj=random_state_obj)
+                entity = transform().do(entity, random_state_obj=random_state_obj)
             # randomly rotate patch -> overlay patch on image -> change image label to target
             patch = RotateImageTransform().do(patch, random_state_obj=random_state_obj)
             entity = ImageMerge().do(entity, patch, pos=placement, random_state_obj=random_state_obj)
@@ -182,8 +204,3 @@ class ImageAttackPipeline(Pipeline):
 def create_entities(data: np.ndarray, labels: np.ndarray, entity_class: Entity) -> np.ndarray:
     return np.array([entity_class(obj, label) for obj, label in zip(data, labels)])
 
-
-
-
-
-        
