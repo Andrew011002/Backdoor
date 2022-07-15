@@ -1,6 +1,7 @@
 .csv
 .DS_Store
 .pth
+.pt
 .pyc
 backdoor_env/
 mycode/mnist/__pycache__/

@@ -1,31 +1,25 @@
-import enum
-from pickletools import optimize
 import torch
+import numpy as np
 import torch.optim as optim
-import torch.nn as nn
-from torch.optim import Optimizer
-from torch.nn.modules.loss import _Loss
 from torch.nn import Module
 from torch.utils.data import DataLoader
 from torch.nn import BCELoss, CrossEntropyLoss
-from ffnet import FeedForwardNetwork
-from convnet import ConvNet
+from nets import FcNet, ConvNet
 
-optimizers = {
-            'adadelta': optim.Adadelta,
+
+nets = {'fcnet': FcNet,
+        'convnet': ConvNet,}
+
+optimizers = {'adadelta': optim.Adadelta,
             'adagrad': optim.Adagrad,
             'adam': optim.Adam,
             'adamax': optim.Adamax,
-            'sgd': optim.SGD
-            }
+            'sgd': optim.SGD}
 
-losses = {
-        'crossentropy': CrossEntropyLoss,
-        'binarycrossentropy': BCELoss,
-        }
+losses = {'crossentropy': CrossEntropyLoss,
+        'binarycrossentropy': BCELoss,}
 
-
-class NetModule(nn.Module):
+class NetModule(Module):
 
     def __init__(self, net: Module, optimizer: str, loss: str, **kwargs) -> None:
         super(NetModule, self).__init__()
@@ -36,9 +30,6 @@ class NetModule(nn.Module):
         self.kwargs = kwargs
 
     def train(self, device=None) -> None:
-        if self.kwargs is None:
-            raise ValueError('Optimizer params are unedefined')
-
         self.optimizer = self.optimizer(self.net.parameters(), **self.kwargs)
         self.net.to(device)
         self.net.train()
@@ -51,7 +42,15 @@ class NetModule(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-    
+
+    def save(self, path):
+        torch.save(self.net.state_dict(), path)
+        print(f'Net saved to {path}')
+
+def load_net(name: str, config: str, **kwargs) -> Module:
+    net = nets.get(name.lower().strip(), KeyError('Net not found'))
+    net = net(config, **kwargs)
+    return net
 
 # trains network on trainloader
 def train(net_module: NetModule, trainloader: DataLoader, epochs: int, verbose: bool=True, device: torch.device='cpu') -> float:
@@ -132,11 +131,11 @@ def test(net_module: NetModule, testloader: DataLoader, verbose: bool=True, devi
 
     return net_loss, acc
 
-    
-
-
 if __name__ == '__main__':
-    net = FeedForwardNetwork(input_shape=(28, 28, ), config='8-layer', classes=3, dropout=0.2)
-    module = NetModule(net, optimizer='SGD', loss='CrossEntropy', lr=0.01)
-    module.train()
-    module.eval()
+    net = load_net('fcnet', '8-layer', input_dim=(32, 32, 3), classes=10)
+    net_module = NetModule(net, 'sgd', 'crossentropy', lr=0.01)
+    net_module.train()
+    net_module.eval()
+    fake_images = torch.Tensor(np.random.randint(0, 256, (16, 32, 32, 3)))
+    print(net_module(fake_images).shape)
+    # net_module.save('net.pt')
