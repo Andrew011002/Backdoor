@@ -20,12 +20,21 @@ def load_dataset(name: str, transforms: list=None, path: str='./data', download:
     dataset = datasets.get(name, KeyError('not a valid dataset'))
     trainset = dataset(root=path, train=True, download=download, transform=transforms)
     testset = dataset(root=path, train=False, download=download, transform=transforms)
+
+    # need to be numnpy arrays for entities
+    if type(trainset.data) is torch.Tensor or type(testset.data) is torch.Tensor:
+        trainset.data = trainset.data.numpy()
+        trainset.targets = trainset.targets.numpy()
+        testset.data = testset.data.numpy()
+        testset.targets = testset.targets.numpy()
+        print('Converting tensors to numpy arrays')
+
     return trainset, testset
 
 # turns numpy array of entities to TensorDataset
 def entity_to_dataset(data: np.ndarray) -> TensorDataset:
-    inputs = np.array(entity.get_data() for entity in data)
-    labels = np.array(entity.get_label() for entity in data)
+    inputs = np.array([entity.get_data() for entity in data], dtype=np.float32)
+    labels = np.array([entity.get_label() for entity in data], dtype=np.int64)
     return TensorDataset(torch.Tensor(inputs), torch.LongTensor(labels))
 
 # creates a DataLoader from a given Dataset

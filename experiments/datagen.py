@@ -13,31 +13,25 @@ from copy import deepcopy
 class ImageEntity(Entity):
 
     def __init__(self, data: np.ndarray, label: int) -> None:
-        # meta data
         self.data = data.astype(np.uint8)
         self.label = label
         self.shape = data.shape
 
-        # handling images of different channels
         try:
             self.channels = data.shape[2]
         except:
             data = np.expand_dims(data, axis=-1).astype(np.uint8)
             self.data = data
             self.shape = data.shape
-            self.channels = data.shape[2]
+            self.channels = 1
 
-    # returns numpy array of image
     def get_data(self):
         return self.data
 
-    # returns integer label
     def get_label(self):
         return self.label
 
-    # shows the image
     def show(self, cmap=None, interpolation=None):
-        # black & white images
         if self.channels == 1:
             cmap = 'gray'
         plt.imshow(self.data, cmap=cmap, interpolation=interpolation)
@@ -46,7 +40,6 @@ class ImageEntity(Entity):
 class SquarePatch(Entity):
 
     def __init__(self, intensity: str, size: tuple, channels: int) -> None:
-        # meta data
         self.rgb_values = {
             'red': [255, 0, 0],
             'orange': [255, 165, 0],
@@ -65,21 +58,18 @@ class SquarePatch(Entity):
         self.channels = channels
         self.data = self.generare_square()
 
-    # returns numpy array of patch
     def get_data(self) -> np.ndarray:
         return self.data
 
-    # shows the patch
     def show(self, cmap: str=None, interpolation: str=None):
+        if self.channels == 1:
+            cmap = 'gray'
         plt.imshow(self.data, cmap=cmap, interpolation=interpolation)
         plt.show()
 
-    # creates the patch
     def generare_square(self) -> np.ndarray:
-        # random colors
         if self.intensity == 'random':
             square = np.random.randint(0, 256, size=self.shape)
-        # defined colors
         else:
             square = np.zeros(shape=self.shape)
             values = self.rgb_values.get(self.intensity, KeyError('Invalid color intensity'))
@@ -90,7 +80,6 @@ class SquarePatch(Entity):
 class RotateImageTransform(Transform):
 
     def do(self, input_obj: Entity, rotations: int=None, random_state_obj: RandomState=None) -> Entity:
-        # define required params
         if random_state_obj is None:
             random_state_obj = RandomState()
         if rotations is None:
@@ -109,7 +98,6 @@ class UpscaleImageTransform(Transform):
         self.scale = scale
 
     def do(self, input_obj: Entity, random_state_obj: RandomState=None) -> Entity:
-        # define required params
         if random_state_obj is None:
             random_state_obj = RandomState()
         if self.scale is None:
@@ -130,7 +118,6 @@ class DownscaleImageTransform(Transform):
         self.scale = scale
 
     def do(self, input_obj: Entity, random_state_obj: RandomState=None) -> Entity:
-        # define required params
         if random_state_obj is None:
             random_state_obj = RandomState()
         if self.scale is None:
@@ -150,13 +137,13 @@ class GrayScaleImageTransform(Transform):
     def do(self, input_obj: Entity, random_state_obj=None) -> Entity:
         # get channels from image -> apply grayscale -> create new grayscaled image
         data = input_obj.get_data()
-        r, g, b = data[:,:,0], data[:,:,1], data[:,:,2]
+        r, g, b = data[:,:,0], data[:,:,1], data[:,:,2] # grab channels and grayscale
         data = 0.2989 * r + 0.5870 * g + 0.1140 * b
-        data = np.expand_dims(data, axis=-1).astype(np.uint8)
+        data = np.expand_dims(data, axis=-1).astype(np.uint8) # add channel
         new_obj = deepcopy(input_obj)
         new_obj.data = data
         new_obj.shape = data.shape
-        new_obj.channels = data.shape[2]
+        new_obj.channels = 1
         return new_obj
 
 class TargetLabelTransform(Transform):
@@ -172,11 +159,9 @@ class TargetLabelTransform(Transform):
 class ImageMerge(Merge):
 
     def do(self, obj_1, obj_2, pos: tuple=None, random_state_obj: RandomState=None) -> Entity:
-        # get shapes
         bg_shape = obj_1.shape
         fg_shape = obj_2.shape
 
-        # define necessary params
         if random_state_obj is None:
             random_state_obj = RandomState()
         if pos is None:
@@ -194,12 +179,11 @@ class ImageMerge(Merge):
 class ImageTransformPipeline(Pipeline):
 
     def process(self, entities: np.ndarray, transforms: list=None, random_state_obj: RandomState=None) -> Entity:
-        # define params
         if random_state_obj is None:
             random_state_obj = RandomState()
 
-        modified = []
         # transform entities
+        modified = []
         for entity in entities:
             for transform in transforms:
                 entity = transform.do(entity, random_state_obj=random_state_obj)
@@ -211,11 +195,13 @@ class ImageAttackPipeline(Pipeline):
 
     def __init__(self) -> None:
         # meta data
-        self.indices = None
+        self.clean = None
+        self.poisoned = None
         self.targets = None
+        self.injections = None
 
     def process(self, entities: np.ndarray, transforms: list=None, pct: float=0.2, patch_color: str='random', 
-    patch_size: tuple=(3, 3), placement: tuple=None, targets: dict=None,  random_state_obj: RandomState=None) -> np.ndarray:
+    patch_size: tuple=(3, 3), placement: tuple=None, targets: dict=None,  random_state_obj: RandomState=None) -> tuple:
         # define required params
         if transforms is None:
             transforms = list()
@@ -225,24 +211,28 @@ class ImageAttackPipeline(Pipeline):
         # set meta data
         n = entities.shape[0]
         m = int(pct * n)
-        self.indices = random_state_obj.randint(0, n, m)
+        self.injections = random_state_obj.randint(0, n, m)
         self.targets = targets
-
-        injected = deepcopy(entities) # create injected array
+        posioned = deepcopy(entities) # create posioned array
+        clean = deepcopy(entities) # create basic array
         patch = SquarePatch(patch_color, patch_size, channels=entities[0].shape[2]) # define trigger patch
-        # poison generated indices
-        for i in self.indices:
+
+        # moidfy entities
+        for i in range(n):
             entity = entities[i]
             # make transformations to images
             for transform in transforms:
                 entity = transform.do(entity, random_state_obj=random_state_obj)
+            clean[i] = entity
             # randomly rotate patch -> overlay patch on image -> change image label to target
-            patch = RotateImageTransform().do(patch, random_state_obj=random_state_obj)
-            entity = ImageMerge().do(entity, patch, pos=placement, random_state_obj=random_state_obj)
-            entity = TargetLabelTransform().do(entity, target_labels=targets)
-            injected[i] = entity
+            if i in self.injections:
+                patch = RotateImageTransform().do(patch, random_state_obj=random_state_obj)
+                entity = ImageMerge().do(entity, patch, pos=placement, random_state_obj=random_state_obj)
+                entity = TargetLabelTransform().do(entity, target_labels=targets)
+            posioned[i] = entity
 
-        return injected
+        self.clean, self.poisoned = clean, posioned
+        return clean, posioned
 
 # create entities of desired entity class from numpy array
 def create_entities(data: np.ndarray, labels: np.ndarray, entity_class: Entity) -> np.ndarray:
