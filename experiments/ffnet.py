@@ -40,6 +40,11 @@ class FeedForwardNetwork(nn.Module):
         return feed_forward
 
 
+if __name__ == '__main__':
+    batch = torch.randint(0, 256, (32, 8, 8, 3), dtype=torch.float)
+    net = FeedForwardNetwork(input_shape=(8, 8, 3), config='8-layer', classes=3, dropout=0.2)
+    print(net(batch))
+
 
 
         
