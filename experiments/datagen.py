@@ -1,5 +1,5 @@
-import numpy as np
 import torch
+import numpy as np
 import matplotlib.pyplot as plt
 from numpy.random import RandomState
 from trojai.datagen.entity import Entity
@@ -79,10 +79,11 @@ class SquarePatch(Entity):
 
 class RotateImageTransform(Transform):
 
-    def do(self, input_obj: Entity, rotations: int=None, random_state_obj: RandomState=None) -> Entity:
-        if random_state_obj is None:
-            random_state_obj = RandomState()
-        if rotations is None:
+    def __init__(self, rotations: int=None) -> None:
+        self.rotations = rotations
+
+    def do(self, input_obj: Entity, random_state_obj: RandomState=None) -> Entity:
+        if self.rotations is None:
             rotations = random_state_obj.randint(1, 4)
         
         # get image -> rotate image counter-clockwise defined by rotations -> create new entity with rotated image
@@ -161,9 +162,6 @@ class ImageMerge(Merge):
     def do(self, obj_1, obj_2, pos: tuple=None, random_state_obj: RandomState=None) -> Entity:
         bg_shape = obj_1.shape
         fg_shape = obj_2.shape
-
-        if random_state_obj is None:
-            random_state_obj = RandomState()
         if pos is None:
             h = random_state_obj.randint(0, bg_shape[0] - fg_shape[0])
             w = random_state_obj.randint(0, bg_shape[1] - fg_shape[1])
@@ -191,7 +189,7 @@ class ImageTransformPipeline(Pipeline):
 
         return np.array(modified)
             
-class ImageAttackPipeline(Pipeline):
+class ImagePoisonPipeline(Pipeline):
 
     def __init__(self) -> None:
         # meta data
@@ -209,7 +207,7 @@ class ImageAttackPipeline(Pipeline):
             random_state_obj = RandomState()
 
         # set meta data
-        n = entities.shape[0]
+        n = len(entities)
         m = int(pct * n)
         self.injections = random_state_obj.randint(0, n, m)
         self.targets = targets
@@ -230,11 +228,14 @@ class ImageAttackPipeline(Pipeline):
                 entity = ImageMerge().do(entity, patch, pos=placement, random_state_obj=random_state_obj)
                 entity = TargetLabelTransform().do(entity, target_labels=targets)
             posioned[i] = entity
-
         self.clean, self.poisoned = clean, posioned
         return clean, posioned
 
-# create entities of desired entity class from numpy array
-def create_entities(data: np.ndarray, labels: np.ndarray, entity_class: Entity) -> np.ndarray:
-    return np.array([entity_class(obj, label) for obj, label in zip(data, labels)])
+class TextEntity(Entity):
+
+    def __init__(self) -> None:
+        self.date = None
+
+    def get_data(self):
+        return self.data
 
