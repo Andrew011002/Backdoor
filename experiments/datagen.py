@@ -10,7 +10,7 @@ from copy import deepcopy
 
 # Image Poisoning
 
-class BasicImageEntity(Entity):
+class ImageEntity(Entity):
 
     def __init__(self, data: np.ndarray, label: int) -> None:
         # meta data
@@ -18,15 +18,16 @@ class BasicImageEntity(Entity):
         self.label = label
         self.shape = data.shape
 
-        # handling 2 dimensional images
+        # handling images of different channels
         try:
             self.channels = data.shape[2]
         except:
-            self.data = np.expand_dims(data, axis=-1).astype(np.uint8)
-            self.shape = self.data.shape
-            self.channels = self.data.shape[2]
+            data = np.expand_dims(data, axis=-1).astype(np.uint8)
+            self.data = data
+            self.shape = data.shape
+            self.channels = data.shape[2]
 
-    # returns numpy array of patch
+    # returns numpy array of image
     def get_data(self):
         return self.data
 
@@ -61,6 +62,7 @@ class SquarePatch(Entity):
             'random': None }
         self.intensity = intensity
         self.shape = tuple(list(size) + [channels])
+        self.channels = channels
         self.data = self.generare_square()
 
     # returns numpy array of patch
@@ -101,6 +103,48 @@ class RotateImageTransform(Transform):
         new_obj.data = data
         return new_obj
 
+class UpscaleImageTransform(Transform):
+
+    def __init__(self, scale: int=None) -> None:
+        self.scale = scale
+
+    def do(self, input_obj: Entity, random_state_obj: RandomState=None) -> Entity:
+        # define required params
+        if random_state_obj is None:
+            random_state_obj = RandomState()
+        if self.scale is None:
+            self.scale = random_state_obj.randint(2, 10)
+        
+        # get image -> upscale image by scale -> create new entity with scaled image
+        data = input_obj.get_data()
+        data = np.repeat(data, self.scale, axis=0)
+        data = np.repeat(data, self.scale, axis=1)
+        new_obj = deepcopy(input_obj)
+        new_obj.data = data
+        new_obj.shape = data.shape
+        return new_obj
+
+class DownscaleImageTransform(Transform):
+
+    def __init__(self, scale: int=None) -> None:
+        self.scale = scale
+
+    def do(self, input_obj: Entity, random_state_obj: RandomState=None) -> Entity:
+        # define required params
+        if random_state_obj is None:
+            random_state_obj = RandomState()
+        if self.scale is None:
+            self.scale = random_state_obj.randint(2, 10)
+        
+        # get image -> downscale image by scale -> create new entity with scaled image
+        data = input_obj.get_data()
+        data = np.repeat(data, 1 / self.scale, axis=0)
+        data = np.repeat(data, 1 / self.scale, axis=1)
+        new_obj = deepcopy(input_obj)
+        new_obj.data = data
+        new_obj.shape = data.shape
+        return new_obj
+
 class GrayScaleImageTransform(Transform):
 
     def do(self, input_obj: Entity, random_state_obj=None) -> Entity:
@@ -120,7 +164,7 @@ class TargetLabelTransform(Transform):
     def do(self, input_obj: Entity, target_labels: dict, random_state_obj=None) -> Entity:
         # get label -> find corresponding target to label -> assign new entity with target
         label = input_obj.get_label()
-        target = target_labels.get(label, KeyError)
+        target = target_labels.get(label, KeyError('Not a valid key for targets'))
         new_obj = deepcopy(input_obj)
         new_obj.label = target
         return new_obj
@@ -147,7 +191,7 @@ class ImageMerge(Merge):
         new_obj.data = data
         return new_obj
 
-class BasicImageTransformPipeline(Pipeline):
+class ImageTransformPipeline(Pipeline):
 
     def process(self, entities: np.ndarray, transforms: list=None, random_state_obj: RandomState=None) -> Entity:
         # define params
@@ -158,10 +202,10 @@ class BasicImageTransformPipeline(Pipeline):
         # transform entities
         for entity in entities:
             for transform in transforms:
-                entity = transform().do(entity, random_state_obj)
+                entity = transform.do(entity, random_state_obj=random_state_obj)
             modified.append(entity)
 
-        return np.array(entities)
+        return np.array(modified)
             
 class ImageAttackPipeline(Pipeline):
 
@@ -191,7 +235,7 @@ class ImageAttackPipeline(Pipeline):
             entity = entities[i]
             # make transformations to images
             for transform in transforms:
-                entity = transform().do(entity, random_state_obj=random_state_obj)
+                entity = transform.do(entity, random_state_obj=random_state_obj)
             # randomly rotate patch -> overlay patch on image -> change image label to target
             patch = RotateImageTransform().do(patch, random_state_obj=random_state_obj)
             entity = ImageMerge().do(entity, patch, pos=placement, random_state_obj=random_state_obj)
