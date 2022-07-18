@@ -4,26 +4,26 @@ import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
-from datagen import ImageEntity, Entity, TextEntity
+from datagen import ImageEntity, TextEntity, DataEntity
 import os
 path = os.path.abspath(os.path.dirname(__file__))
 
-datasets = {
-        'caltech101': torchvision.datasets.Caltech101,
-        'cfar10': torchvision.datasets.CIFAR10,
-        'imagenet': torchvision.datasets.ImageNet,
-        'mnist': torchvision.datasets.MNIST,
-        'stanford cars': torchvision.datasets.StanfordCars
-        }
+# datasets to use
+datasets = {'caltech101': torchvision.datasets.Caltech101,
+            'cfar10': torchvision.datasets.CIFAR10,
+            'imagenet': torchvision.datasets.ImageNet,
+            'mnist': torchvision.datasets.MNIST,
+            'stanford cars': torchvision.datasets.StanfordCars}
 
-entities = {'base': Entity,
+# entities that can be created
+entities = {'data': DataEntity,
             'image': ImageEntity,
             'text': TextEntity,}
 
 
 class EntitySet(Dataset):
 
-    def __init__(self, dataset: Dataset, entity_class: type=Entity) -> None:
+    def __init__(self, dataset: Dataset, entity_class: type=DataEntity) -> None:
         super(EntitySet, self).__init__()
         self.dataset = dataset
         self.classes = dataset.classes
@@ -31,10 +31,10 @@ class EntitySet(Dataset):
         self.dtype = entity_class
         self.entities = self.create_entities()
 
-    def __getitem__(self, index: int) -> Entity:
+    def __getitem__(self, index: int) -> DataEntity:
         return self.entities[index]
 
-    def __setitem__(self, index: int, value: Entity) -> None:
+    def __setitem__(self, index: int, value: DataEntity) -> None:
         self.entities[index] = value
 
     def __len__(self) -> int:
@@ -43,9 +43,11 @@ class EntitySet(Dataset):
     def create_entities(self) -> np.ndarray:
         data = self.dataset.data
         labels = self.dataset.targets
+        # covert tensors to numpy arrays
         if type(data) is torch.Tensor:
             data = data.numpy()
             labels = labels.numpy()
+        # convert to DataEntity objects
         return np.array([self.dtype(ent, label) for ent, label in zip(data, labels)])
 
     # turns numpy array of entities to TensorDataset

@@ -1,241 +1,388 @@
 import torch
 import numpy as np
+import nltk
 import matplotlib.pyplot as plt
-from numpy.random import RandomState
+from abc import abstractclassmethod
 from trojai.datagen.entity import Entity
 from trojai.datagen.transform_interface import Transform
 from trojai.datagen.merge_interface import Merge
 from trojai.datagen.pipeline import Pipeline
+from string import punctuation
+from nltk.corpus import stopwords
 from copy import deepcopy
 
-# Image Poisoning
+nltk.download('stopwords')
 
-class ImageEntity(Entity):
 
-    def __init__(self, data: np.ndarray, label: int) -> None:
-        self.data = data.astype(np.uint8)
-        self.label = label
-        self.shape = data.shape
+class DataEntity(Entity):
 
-        try:
-            self.channels = data.shape[2]
-        except:
-            data = np.expand_dims(data, axis=-1).astype(np.uint8)
-            self.data = data
-            self.shape = data.shape
-            self.channels = 1
+    def __init__(self):
+        pass
 
     def get_data(self):
-        return self.data
+        pass
 
+    @abstractclassmethod
     def get_label(self):
-        return self.label
+        pass
 
-    def show(self, cmap=None, interpolation=None):
-        if self.channels == 1:
-            cmap = 'gray'
-        plt.imshow(self.data, cmap=cmap, interpolation=interpolation)
-        plt.show()
+    @abstractclassmethod
+    def set_data(self, data: np.ndarray) -> None:
+        pass
 
-class SquarePatch(Entity):
+    @abstractclassmethod
+    def set_label(self, label: int) -> None:
+        pass
 
-    def __init__(self, intensity: str, size: tuple, channels: int) -> None:
-        self.rgb_values = {
-            'red': [255, 0, 0],
-            'orange': [255, 165, 0],
-            'yellow': [255, 255, 0],
-            'cyan': [0, 255, 255],
-            'pink': [255, 0, 255],
-            'purple': [155, 50, 255],
-            'green': [0, 255, 0],
-            'blue': [0, 0 , 255],
-            'black': [0, 0, 0],
-            'white': [255, 255, 255],
-            'gray': [128, 128, 128],
-            'random': None }
-        self.intensity = intensity
-        self.shape = tuple(list(size) + [channels])
-        self.channels = channels
-        self.data = self.generare_square()
 
+
+class ImageEntity(DataEntity):
+
+    """
+
+    """
+
+    def __init__(self, data: np.ndarray, label: int) -> None:
+        # set atts
+        self.data = data
+        self.label = label
+        self.shape = (data.shape[0], data.shape[1])
+        self.channels = data.shape[-1]
+
+    # class methods
     def get_data(self) -> np.ndarray:
         return self.data
 
-    def show(self, cmap: str=None, interpolation: str=None):
-        if self.channels == 1:
-            cmap = 'gray'
-        plt.imshow(self.data, cmap=cmap, interpolation=interpolation)
+    def get_label(self) -> int:
+        return self.label
+
+    def set_data(self, data: np.ndarray) -> None:
+        self.data = data
+        self.shape = (data.shape[0], data.shape[1])
+        self.channels = data.shape[-1]
+
+    def set_label(self, label: int) -> None:
+        self.label = label
+        
+    # other methods
+    def show(self, cmap: str='gray', interpolation: str=None) -> None:
+        plt.imshow(self.data, cmap, interpolation)
         plt.show()
 
-    def generare_square(self) -> np.ndarray:
-        if self.intensity == 'random':
-            square = np.random.randint(0, 256, size=self.shape)
-        else:
-            square = np.zeros(shape=self.shape)
-            values = self.rgb_values.get(self.intensity, KeyError('Invalid color intensity'))
-            for i in range(square.T.shape[0]):
-                square.T[i] += values[i]
-        return square.astype(np.uint8)
+class ImagePatch(ImageEntity):
 
-class RotateImageTransform(Transform):
+    """
 
-    def __init__(self, rotations: int=None) -> None:
-        self.rotations = rotations
+    """
+    
+    def __init__(self, shape: tuple, channels: int, palette: str='random') -> None:
+        # set atts
+        self.shape = shape
+        self.channels = channels
+        self.palette = palette
+        self.data = self.create()
+        self.label = None
 
-    def do(self, input_obj: Entity, random_state_obj: RandomState=None) -> Entity:
-        if self.rotations is None:
-            rotations = random_state_obj.randint(1, 4)
-        
-        # get image -> rotate image counter-clockwise defined by rotations -> create new entity with rotated image
-        data = input_obj.get_data()
-        data = np.rot90(data, rotations)
-        new_obj = deepcopy(input_obj)
-        new_obj.data = data
-        return new_obj
+    # other methods
+    def create(self) -> np.ndarray:
+        if self.palette == 'random':
+            return np.random.randint(0, 256, (self.shape[0], self.shape[1], self.channels))
+        if self.palette == 'uniform':
+            patch = np.zeros((self.shape[0], self.shape[1], self.channels), dtype=np.uint8)
+            rgb = (np.random.randint(0, 256), np.random.randint(0, 256), np.random.randint(0, 256))
+            for i in range(self.channels):
+                patch[:, :, i] = rgb[i]
+            return patch
 
-class UpscaleImageTransform(Transform):
+class TextEntity(DataEntity):
 
-    def __init__(self, scale: int=None) -> None:
-        self.scale = scale
+    """
+    
+    """
 
-    def do(self, input_obj: Entity, random_state_obj: RandomState=None) -> Entity:
-        if random_state_obj is None:
-            random_state_obj = RandomState()
-        if self.scale is None:
-            self.scale = random_state_obj.randint(2, 10)
-        
-        # get image -> upscale image by scale -> create new entity with scaled image
-        data = input_obj.get_data()
-        data = np.repeat(data, self.scale, axis=0)
-        data = np.repeat(data, self.scale, axis=1)
-        new_obj = deepcopy(input_obj)
-        new_obj.data = data
-        new_obj.shape = data.shape
-        return new_obj
+    def __init__(self, text: str, label: int) -> None:
+        # sett atts
+        self.text = text
+        self.data = np.array(text.split())
+        self.label = label
 
-class DownscaleImageTransform(Transform):
-
-    def __init__(self, scale: int=None) -> None:
-        self.scale = scale
-
-    def do(self, input_obj: Entity, random_state_obj: RandomState=None) -> Entity:
-        if random_state_obj is None:
-            random_state_obj = RandomState()
-        if self.scale is None:
-            self.scale = random_state_obj.randint(2, 10)
-        
-        # get image -> downscale image by scale -> create new entity with scaled image
-        data = input_obj.get_data()
-        data = np.repeat(data, 1 / self.scale, axis=0)
-        data = np.repeat(data, 1 / self.scale, axis=1)
-        new_obj = deepcopy(input_obj)
-        new_obj.data = data
-        new_obj.shape = data.shape
-        return new_obj
-
-class GrayScaleImageTransform(Transform):
-
-    def do(self, input_obj: Entity, random_state_obj=None) -> Entity:
-        # get channels from image -> apply grayscale -> create new grayscaled image
-        data = input_obj.get_data()
-        r, g, b = data[:,:,0], data[:,:,1], data[:,:,2] # grab channels and grayscale
-        data = 0.2989 * r + 0.5870 * g + 0.1140 * b
-        data = np.expand_dims(data, axis=-1).astype(np.uint8) # add channel
-        new_obj = deepcopy(input_obj)
-        new_obj.data = data
-        new_obj.shape = data.shape
-        new_obj.channels = 1
-        return new_obj
-
-class TargetLabelTransform(Transform):
-
-    def do(self, input_obj: Entity, target_labels: dict, random_state_obj=None) -> Entity:
-        # get label -> find corresponding target to label -> assign new entity with target
-        label = input_obj.get_label()
-        target = target_labels.get(label, KeyError('Not a valid key for targets'))
-        new_obj = deepcopy(input_obj)
-        new_obj.label = target
-        return new_obj
-
-class ImageMerge(Merge):
-
-    def do(self, obj_1, obj_2, pos: tuple=None, random_state_obj: RandomState=None) -> Entity:
-        bg_shape = obj_1.shape
-        fg_shape = obj_2.shape
-        if pos is None:
-            h = random_state_obj.randint(0, bg_shape[0] - fg_shape[0])
-            w = random_state_obj.randint(0, bg_shape[1] - fg_shape[1])
-            pos = (h, w)
-        
-        # overlay foreground on background -> create new entity
-        data = deepcopy(obj_1.get_data())
-        data[pos[0]: pos[0] + fg_shape[0], pos[1]: pos[1] + fg_shape[1]] = deepcopy(obj_2.get_data())
-        new_obj = deepcopy(obj_1)
-        new_obj.data = data
-        return new_obj
-
-class ImageTransformPipeline(Pipeline):
-
-    def process(self, entities: np.ndarray, transforms: list=None, random_state_obj: RandomState=None) -> Entity:
-        if random_state_obj is None:
-            random_state_obj = RandomState()
-
-        # transform entities
-        modified = []
-        for entity in entities:
-            for transform in transforms:
-                entity = transform.do(entity, random_state_obj=random_state_obj)
-            modified.append(entity)
-
-        return np.array(modified)
-            
-class ImagePoisonPipeline(Pipeline):
-
-    def __init__(self) -> None:
-        # meta data
-        self.clean = None
-        self.poisoned = None
-        self.targets = None
-        self.injections = None
-
-    def process(self, entities: np.ndarray, transforms: list=None, pct: float=0.2, patch_color: str='random', 
-    patch_size: tuple=(3, 3), placement: tuple=None, targets: dict=None,  random_state_obj: RandomState=None) -> tuple:
-        # define required params
-        if transforms is None:
-            transforms = list()
-        if random_state_obj is None:
-            random_state_obj = RandomState()
-
-        # set meta data
-        n = len(entities)
-        m = int(pct * n)
-        self.injections = random_state_obj.randint(0, n, m)
-        self.targets = targets
-        posioned = deepcopy(entities) # create posioned array
-        clean = deepcopy(entities) # create basic array
-        patch = SquarePatch(patch_color, patch_size, channels=entities[0].shape[2]) # define trigger patch
-
-        # moidfy entities
-        for i in range(n):
-            entity = entities[i]
-            # make transformations to images
-            for transform in transforms:
-                entity = transform.do(entity, random_state_obj=random_state_obj)
-            clean[i] = entity
-            # randomly rotate patch -> overlay patch on image -> change image label to target
-            if i in self.injections:
-                patch = RotateImageTransform().do(patch, random_state_obj=random_state_obj)
-                entity = ImageMerge().do(entity, patch, pos=placement, random_state_obj=random_state_obj)
-                entity = TargetLabelTransform().do(entity, target_labels=targets)
-            posioned[i] = entity
-        self.clean, self.poisoned = clean, posioned
-        return clean, posioned
-
-class TextEntity(Entity):
-
-    def __init__(self) -> None:
-        self.date = None
-
-    def get_data(self):
+    # class methods
+    def get_data(self) -> np.ndarray:
         return self.data
 
+    def get_label(self) -> int:
+        return self.label
+
+    def set_data(self, data: np.ndarray) -> None:
+        self.data = data
+        self.text = ' '.join(data)
+
+    def set_label(self, label: int) -> None:
+        self.label = label
+
+    # other methods
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def get_text(self) -> str:
+        return self.text
+
+    def set_text(self, text: str) -> None:
+        self.text = text
+        self.data = np.array(text.split())
+
+class TextPatch(TextEntity):
+
+    """
+    
+    """
+
+    def __init__(self, text: str) -> None:
+        # set atts
+        self.text = text
+        self.data = np.array(text.split())
+        self.label = None
+
+class LabelTransform(Transform):
+
+    """
+    
+    """
+
+    def __init__(self, targets: dict) -> None:
+        # set atts
+        self.targets = targets
+
+    # class method
+    def do(self, entity: DataEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> DataEntity:
+        # peform transform
+        target = self.targets.get(entity.get_label(), KeyError('target not found'))
+
+        # set label
+        if inplace:
+            entity.set_label(target)
+        else:
+            entity = deepcopy(entity)
+            entity.set_label(target)
+        return entity
+
+class RotateTransform(Transform):
+
+    """
+    
+    """
+
+    def __init__(self, k: int=None) -> None:
+        # set atts
+        self.k = k
+
+    # class method
+    def do(self, entity: ImageEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> ImageEntity:
+        # set args
+        if random_state is None:
+            random_state = np.random.RandomState()
+        if self.k is None:
+            k = random_state.randint(1, 4)
+
+        # peform transform
+        data = entity.get_data()
+        data = np.rot90(data, k)
+
+        # set data
+        if inplace:   
+            entity.set_data(data)
+        else:
+            entity = deepcopy(entity)
+            entity.set_data(data)
+        return entity
+
+class ExpandTransform(Transform):
+
+    """
+    
+    """
+
+    def __init__(self, n_channels: int=None) -> None:
+        # set atts
+        self.n_channels = n_channels
+
+    def do(self, entity: ImageEntity, random_state: np.random.RandomState=None, inplace: bool=False):
+        # set args
+        if random_state is None:
+            random_state = np.random.RandomState()
+        
+        # peform transform
+        data = entity.get_data()
+        data = np.array([data for _ in range(self.n_channels)])
+
+        # set data
+        if inplace:
+            entity.set_data(data)
+        else:
+            entity = deepcopy(entity)
+            entity.set_data(data)
+        return data
+
+class LowerTransform(Transform):
+
+    """
+    
+    """
+
+    def do(self, entity: TextEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> TextEntity:
+
+        # peform transform
+        text = entity.get_text()
+        text = text.lower()
+
+        # set data
+        if inplace:
+            entity.set_text(text)
+        else:
+            entity = deepcopy(entity)
+            entity.set_text(text)
+        return entity
+
+class UpperTransform(Transform):
+
+    """
+    
+    """
+    
+    def do(self, entity: TextEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> TextEntity:
+        # peform transform
+        text = entity.get_text()
+        text = text.upper()
+
+        # set data
+        if inplace:
+            entity.set_text(text)
+        else:
+            entity = deepcopy(entity)
+            entity.set_text(text)
+        return entity
+
+class PunctuationTransform(Transform):
+
+    """
+    
+    """
+
+    def __init__(self, punctuation: set=None):
+        # set atts
+        self.punctuation = punctuation
+
+    def do(self, entity: TextEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> TextEntity:
+        # set args
+        if self.punctuation is None:
+            self.punctuation = set(punctuation)
+
+        # peform transform
+        data = entity.get_data()
+        for i in range(len(entity)):
+            word = data[i]
+            word = ''.join(char for char in word if char not in punctuation)
+            data[i] = word
+        
+        # set data
+        if inplace:
+            entity.set_data(data)
+        else:
+            entity = deepcopy(entity)
+            entity.set_data(data)
+        return entity
+
+class StopwordsTransform(Transform):
+
+    """
+    
+    """
+
+    def __init__(self, stopwords: set=None) -> None:
+        # set atts
+        self.stopwords = stopwords
+
+    def do(self, entity: TextEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> TextEntity:
+        # set args
+        if self.stopwords is None:
+            self.stopwords = set(stopwords.words('english'))
+
+        # peform transform
+        data = [word for word in entity.get_data() if word.lower() not in self.stopwords]
+        data = np.array(data)
+
+        # set data
+        if inplace:
+            entity.set_data(data)
+        else:
+            entity = deepcopy(entity)
+            entity.set_data(data)
+        return entity
+
+class OverlayMerge(Merge):
+
+    """
+    
+    """
+
+    def __init__(self, pos: tuple=None) -> None:
+        # set atts
+        self.pos = pos
+
+    def do(self, entity: ImageEntity, overlay: ImageEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> ImageEntity:
+        # set args
+        if random_state is None:
+            random_state = np.random.RandomState()
+        if self.pos is None:
+            pos = (random_state.randint(0, entity.shape[0] - overlay.shape[0]), random_state.randint(0, entity.shape[1] - overlay.shape[1]))
+
+        # peform merge
+        data = deepcopy(entity.get_data())
+        data[pos[0]:pos[0] + overlay.shape[0], pos[1]:pos[1] + overlay.shape[1]] = overlay.get_data()
+
+        # set data
+        if inplace:
+            entity.set_data(data)
+        else:
+            entity = deepcopy(entity)
+            entity.set_data(data)
+        return entity
+
+class InsertMerge(Merge):
+
+    """
+    
+    """
+
+    def __init__(self, placement: str=None, maxinsert: int=None) -> None:
+        # set atts
+        self.placement = placement
+        self.maxinsert = maxinsert
+
+    def do(self, entity: TextEntity, insert: TextEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> TextEntity:
+        # set args
+        if random_state is None:
+            random_state = np.random.RandomState()
+        if self.maxinsert is None:
+            self.maxinsert = len(entity)
+        if self.placement is None:
+            self.placement = random_state.randint(0, self.maxinsert)
+
+        # peform merge
+        data = list(entity.get_data())
+        insert_data = list(insert.get_data())
+        data = data[:self.placement] + insert_data + data[self.placement:]
+        data = np.array(data)
+
+        # set data
+        if inplace:
+            entity.set_data(data)
+        else:
+            entity = deepcopy(entity)
+            entity.set_data(data)
+        return entity
+
+        
+
+if __name__ == '__main__':
+    pass
