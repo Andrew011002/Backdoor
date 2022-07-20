@@ -6,20 +6,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
 from datagen import ImageEntity, TextEntity, DataEntity
 import os
+
 path = os.path.abspath(os.path.dirname(__file__))
-
-# datasets to use
-datasets_ = {'caltech101': torchvision.datasets.Caltech101,
-            'cfar10': torchvision.datasets.CIFAR10,
-            'imagenet': torchvision.datasets.ImageNet,
-            'mnist': torchvision.datasets.MNIST,
-            'stanford cars': torchvision.datasets.StanfordCars}
-
-# entities that can be created
-entities_ = {'data': DataEntity,
-            'image': ImageEntity,
-            'text': TextEntity,}
-
 
 class EntitySet(Dataset):
 
@@ -75,16 +63,15 @@ def numpy_to_entity(input_data: np.ndarray, labels: np.ndarray, dtype: DataEntit
 
     return np.array([dtype(data, label) for data, label in zip(input_data, labels)])
 
-def load_dataset(name: str, transforms: list=None, path: str='./data', train: bool=True, 
-                download: bool=True, etype: str=None) -> tuple:
+def load_dataset(dataset: Dataset, transforms: list=None, path: str='./data', train: bool=True, 
+                download: bool=True, etype: DataEntity=None) -> tuple:
 
     """
 
     """
 
     # pull dataset
-    data = datasets_.get(name, KeyError('not a valid dataset'))
-    dataset = data(root=path, train=train, download=download, transform=transforms)
+    dataset = dataset(root=path, train=train, download=download, transform=transforms)
     input_data, target_data = dataset.data, dataset.targets
 
     # convert to numpy (if needed)
@@ -94,7 +81,7 @@ def load_dataset(name: str, transforms: list=None, path: str='./data', train: bo
         pass
 
     # convert to entities
-    entities = numpy_to_entity(input_data, target_data, entities_.get(etype, KeyError('not a valid entity')))
+    entities = numpy_to_entity(input_data, target_data, etype)
     # gets mapping of string classes to integer classes
     classes = {i: label for i, label in enumerate(dataset.classes)}
     return entities, classes

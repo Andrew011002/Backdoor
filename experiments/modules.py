@@ -1,44 +1,32 @@
 import torch
 import numpy as np
-import torch.optim as optim
 from torch.nn import Module
 from torch.utils.data import DataLoader
-from torch.nn import BCELoss, CrossEntropyLoss
-from nets import FcNet, ConvNet
-from datasets import *
-from datagen import *
+from torch.nn.modules.loss import _Loss
+from torch.nn import CrossEntropyLoss, BCELoss
+from torch.optim import Optimizer, SGD, Adam
+from datasets import DataLoader
+from nets import ConvNet, FcNet
 
-
-nets = {'fcnet': FcNet,
-        'convnet': ConvNet,}
-
-optimizers = {'adadelta': optim.Adadelta,
-            'adagrad': optim.Adagrad,
-            'adam': optim.Adam,
-            'adamax': optim.Adamax,
-            'sgd': optim.SGD}
-
-losses = {'crossentropy': CrossEntropyLoss,
-        'binarycrossentropy': BCELoss,}
 
 class NetModule(Module):
 
-    def __init__(self, net: Module, optimizer: str, loss: str, **optim_kwargs) -> None:
+    def __init__(self, net: Module, optimizer: Optimizer, loss: _Loss, **optim_kwargs) -> None:
         super(NetModule, self).__init__()
         self.net = net
-        self.optimizer = optimizers.get(optimizer.lower().strip(), KeyError('Optimizer not found'))(net.parameters(), **optim_kwargs)
-        self.loss = losses.get(loss.lower().strip(), KeyError('Loss not found'))()
+        self.optimizer = optimizer(net.parameters(), **optim_kwargs)
+        self.loss = loss()
         self.params = self.net.parameters()
 
     def train(self, device=None) -> None:
+        # move net to device
         self.net.to(device)
         self.net.train()
-        print(f'Net ready for training')
     
     def eval(self, device=None) -> None:
+        # move net to device
         self.net.to(device)
         self.net.eval()
-        print(f'Net ready for evaluation')
 
     def forward(self, x):
         return self.net(x)
@@ -47,18 +35,16 @@ class NetModule(Module):
         torch.save(self.net.state_dict(), path)
         print(f'Net saved to {path}')
 
-def load_net(name: str, config: str, **net_kwargs) -> Module:
-    net = nets.get(name.lower().strip(), KeyError('Net not found'))
-    net = net(config, **net_kwargs)
-    return net
 
 # trains network on trainloader
-def train(net_module: NetModule, trainloader: DataLoader, epochs: int, verbose: bool=True, device: torch.device='cpu') -> float:
+def train(net_module: NetModule, trainloader: DataLoader, epochs: int, verbose: bool=True, device: torch.device=None) -> float:
     net_module.train(device)
     n = len(trainloader.dataset)
     m = len(trainloader)
     net_loss = 0
-    print(f'Training started')
+
+    if verbose:
+        print('Training started')
 
     for epoch in range(epochs):
         accum_loss = 0
@@ -96,16 +82,17 @@ def train(net_module: NetModule, trainloader: DataLoader, epochs: int, verbose: 
     
 
 # test network on testloader (categorical)
-def test(net_module: NetModule, testloader: DataLoader, verbose: bool=True, device: torch.device='cpu') -> tuple:
+def test(net_module: NetModule, testloader: DataLoader, verbose: bool=True, device: torch.device=None) -> tuple:
     # prepare net for testing
-    net_module.eval()
+    net_module.eval(device)
     accum_loss = 0
     correct = 0
     samples_seen = 0
     n = len(testloader.dataset)
     m = len(testloader)
 
-    print('Testing started')
+    if verbose:
+        print('Testing started')
     # ignore gradients
     with torch.no_grad():
 
@@ -135,8 +122,8 @@ def test(net_module: NetModule, testloader: DataLoader, verbose: bool=True, devi
     return net_loss, acc
 
 if __name__ == '__main__':
-    net = load_net('convnet', '11-layer', channels=3, classes=10, dropout=0.5)
-    net_module = NetModule(net, 'sgd', 'crossentropy', lr=0.01)
+    net = ConvNet('11-layer', channels=3, classes=10)
+    net_module = NetModule(net, SGD, CrossEntropyLoss, lr=0.01)
     net_module.train()
     net_module.eval()
     fake_images = torch.Tensor(np.random.randint(0, 256, (16, 32, 32, 3)))

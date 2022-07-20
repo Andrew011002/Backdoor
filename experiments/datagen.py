@@ -34,8 +34,6 @@ class DataEntity(Entity):
     def set_label(self, label: int) -> None:
         pass
 
-
-
 class ImageEntity(DataEntity):
 
     """
@@ -109,6 +107,7 @@ class TextEntity(DataEntity):
         self.text = text
         self.data = np.array(text.split())
         self.label = label
+        self.tokens = None
 
     # class methods
     def get_data(self) -> np.ndarray:
@@ -142,10 +141,11 @@ class TextPatch(TextEntity):
     """
 
     def __init__(self, text: str) -> None:
-        # set atts
-        self.text = text
-        self.data = np.array(text.split())
-        self.label = None
+        super(TextPatch, self).__init__(text, None)
+
+    def shuffle(self) -> None:
+        shuffled = np.random.shuffle(self.data)
+        self.set_data(shuffled)
 
 class LabelTransform(Transform):
 
@@ -388,18 +388,17 @@ class InsertMerge(Merge):
             entity.set_data(data)
         return entity
 
-
 class PoisonPipeline(Pipeline):
 
     def __init__(self) -> None:
         pass
     
-    def process(self, entities: np.ndarray, patches: np.ndarray, operations: Iterable[list]=None, merge: Merge=None, pct: float=0.2, random_state: np.random.RandomState=None) -> np.ndarray:
+    def process(self, entities: np.ndarray, patches: np.ndarray, operations: Iterable[list]=None, merge: Merge=None, pct: float=0.2, random_state: np.random.RandomState=None) -> tuple:
         # set args
         if random_state is None:
             random_state = np.random.RandomState()
 
-        modified = []
+        modified = [] # [modified entities, merged entities]
         n = len(entities)
         indices = random_state.choice(n, int(pct * n), replace=False)
 
@@ -426,25 +425,26 @@ class PoisonPipeline(Pipeline):
 
             # transforms on selected entities
             if select_ops:
-                selected = deepcopy(entities)
+                selected = deepcopy(entities) # copy of modified entities
                 for i in indices:
                     entity = selected[i]
                     for transform in select_ops:
                         entity = transform.do(entity, random_state)
                     selected[i] = entity
         
-        modified.append(entities), modified.append(patches)
+        modified.append(entities) # add modified entities
 
+        # peform merge (if needed)
         if merge is not None:
             if merge.select:
-                merged = deepcopy(selected)
+                merged = deepcopy(selected) # copy of selected modified entities
                 # merges on selected entities
                 for i in indices:
                     entity, patch = merged[i], patches[i]
                     entity = merge.do(entity, patch, random_state)
                     merged[i] = entity
             else:
-                merged = deepcopy(entities)
+                merged = deepcopy(entities) # copy of modified entities
                 # merges on entities
                 for i in range(n):
                     entity, patch = merged[i], patches[i]
@@ -455,16 +455,7 @@ class PoisonPipeline(Pipeline):
         else:
             modified.append(None)
 
-        return np.array(modified)
-
-
-
-                
-                
-
-       
-
-        
+        return tuple(modified)        
 
 if __name__ == '__main__':
     pass
