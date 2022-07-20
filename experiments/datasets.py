@@ -9,72 +9,95 @@ import os
 path = os.path.abspath(os.path.dirname(__file__))
 
 # datasets to use
-datasets = {'caltech101': torchvision.datasets.Caltech101,
+datasets_ = {'caltech101': torchvision.datasets.Caltech101,
             'cfar10': torchvision.datasets.CIFAR10,
             'imagenet': torchvision.datasets.ImageNet,
             'mnist': torchvision.datasets.MNIST,
             'stanford cars': torchvision.datasets.StanfordCars}
 
 # entities that can be created
-entities = {'data': DataEntity,
+entities_ = {'data': DataEntity,
             'image': ImageEntity,
             'text': TextEntity,}
 
 
 class EntitySet(Dataset):
 
-    def __init__(self, dataset: Dataset, entity_class: type=DataEntity) -> None:
-        super(EntitySet, self).__init__()
-        self.dataset = dataset
-        self.classes = dataset.classes
-        self.mappings = {v: k for k, v in dataset.class_to_idx.items()}
-        self.dtype = entity_class
-        self.entities = self.create_entities()
+    """
 
-    def __getitem__(self, index: int) -> DataEntity:
-        return self.entities[index]
+    """
 
-    def __setitem__(self, index: int, value: DataEntity) -> None:
-        self.entities[index] = value
+    def __init__(self, entities: np.ndarray, classes: dict=None) -> None:
 
-    def __len__(self) -> int:
-        return self.entities.shape[0]
+        # set atts
+        self.entities = entities
+        self.classes = classes
+        self.etype = type(entities[0])
+        self.tensorset = self.create_tensorset()
+        self.dataloader = self.create_dataloader()
 
-    def create_entities(self) -> np.ndarray:
-        data = self.dataset.data
-        labels = self.dataset.targets
-        # covert tensors to numpy arrays
-        if type(data) is torch.Tensor:
-            data = data.numpy()
-            labels = labels.numpy()
-        # convert to DataEntity objects
-        return np.array([self.dtype(ent, label) for ent, label in zip(data, labels)])
+    def create_tensorset(self) -> TensorDataset:
+        # create tensorset
+        data, labels = np.array([entity.get_data() for entity in self.entities]), np.array([entity.get_label() for entity in self.entities])
+        data, labels = torch.Tensor(data), torch.LongTensor(labels)
+        tensorset = TensorDataset(data, labels)
+        return tensorset
 
-    # turns numpy array of entities to TensorDataset
-    def entity_to_tensorset(self) -> TensorDataset:
-        data = self.entities
-        inputs = np.array([entity.get_data() for entity in data], dtype=np.float32)
-        labels = np.array([entity.get_label() for entity in data], dtype=np.int64)
-        return TensorDataset(torch.Tensor(inputs), torch.LongTensor(labels))
-
-    # creates a DataLoader from a given Dataset
-    def create_dataloader(self, batch_size: int=32, shuffle=False, n_workers: int=0, drop_last=False) -> DataLoader:
-        dataset = self.entity_to_tensorset()
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=n_workers, drop_last=drop_last)
+    def create_dataloader(self, batch_size: int=32, n_workers: int=0, shuffle: bool=False, drop_last: bool=False) -> DataLoader:
+        # create dataloader
+        dataloader = DataLoader(self.tensorset, batch_size=batch_size, num_workers=n_workers, shuffle=shuffle, drop_last=drop_last)
         return dataloader
 
-# loads a desired dataset from dataset dict
-def load_dataset(name: str, entity_type: str, transforms: list=None, path: str='./data', download: bool=True) -> Dataset:
-    dataset = datasets.get(name, KeyError('not a valid dataset'))
-    trainset = dataset(root=path, train=True, download=download, transform=transforms)
-    testset = dataset(root=path, train=False, download=download, transform=transforms)
-    
-    entity = entities.get(entity_type, KeyError('not a valid entity type'))
-    trainset = EntitySet(trainset, entity)
-    testset = EntitySet(testset, entity)
-    return trainset, testset
+    def get_entities(self) -> np.ndarray:
+        return self.entities
+
+    def get_tensorset(self) -> TensorDataset:
+        return self.tensorset
+
+    def get_dataloader(self, **kwargs) -> DataLoader:
+        # create dataloader if kwargs passed
+        if kwargs:
+            self.dataloader = self.create_dataloader(**kwargs)
+        return self.dataloader
+
+    def __len__(self) -> int:
+        return len(self.entities)
+
+    def __getitem__(self, index) -> DataEntity:
+        return self.entities[index]
 
 
+def numpy_to_entity(input_data: np.ndarray, labels: np.ndarray, dtype: DataEntity) -> np.ndarray:
+
+    """
+
+    """
+
+    return np.array([dtype(data, label) for data, label in zip(input_data, labels)])
+
+def load_dataset(name: str, transforms: list=None, path: str='./data', train: bool=True, 
+                download: bool=True, etype: str=None) -> tuple:
+
+    """
+
+    """
+
+    # pull dataset
+    data = datasets_.get(name, KeyError('not a valid dataset'))
+    dataset = data(root=path, train=train, download=download, transform=transforms)
+    input_data, target_data = dataset.data, dataset.targets
+
+    # convert to numpy (if needed)
+    try:
+        input_data, target_data = input_data.numpy(), target_data.numpy()
+    except AttributeError:
+        pass
+
+    # convert to entities
+    entities = numpy_to_entity(input_data, target_data, entities_.get(etype, KeyError('not a valid entity')))
+    # gets mapping of string classes to integer classes
+    classes = {i: label for i, label in enumerate(dataset.classes)}
+    return entities, classes
 
 if __name__ == '__main__':
     None

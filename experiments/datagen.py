@@ -1,4 +1,3 @@
-import torch
 import numpy as np
 import nltk
 import matplotlib.pyplot as plt
@@ -9,9 +8,10 @@ from trojai.datagen.merge_interface import Merge
 from trojai.datagen.pipeline import Pipeline
 from string import punctuation
 from nltk.corpus import stopwords
+from typing import Iterable
 from copy import deepcopy
 
-nltk.download('stopwords')
+# nltk.download('stopwords')
 
 
 class DataEntity(Entity):
@@ -93,6 +93,10 @@ class ImagePatch(ImageEntity):
             for i in range(self.channels):
                 patch[:, :, i] = rgb[i]
             return patch
+
+    def get_patches(self, n: int=1) -> np.ndarray:
+        patches = np.array([ImageEntity(self.data, None) for _ in range(n)])
+        return patches
 
 class TextEntity(DataEntity):
 
@@ -214,6 +218,7 @@ class ExpandTransform(Transform):
         # peform transform
         data = entity.get_data()
         data = np.array([data for _ in range(self.n_channels)])
+        data.resize((data.shape[1], data.shape[2], data.shape[0]))
 
         # set data
         if inplace:
@@ -221,7 +226,7 @@ class ExpandTransform(Transform):
         else:
             entity = deepcopy(entity)
             entity.set_data(data)
-        return data
+        return entity
 
 class LowerTransform(Transform):
 
@@ -325,20 +330,21 @@ class OverlayMerge(Merge):
     
     """
 
-    def __init__(self, pos: tuple=None) -> None:
+    def __init__(self, pos: tuple=None, select: bool=False) -> None:
         # set atts
         self.pos = pos
+        self.select = select
 
-    def do(self, entity: ImageEntity, overlay: ImageEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> ImageEntity:
+    def do(self, entity: ImageEntity, insert: ImageEntity, random_state: np.random.RandomState=None, inplace: bool=False) -> ImageEntity:
         # set args
         if random_state is None:
             random_state = np.random.RandomState()
         if self.pos is None:
-            pos = (random_state.randint(0, entity.shape[0] - overlay.shape[0]), random_state.randint(0, entity.shape[1] - overlay.shape[1]))
+            pos = (random_state.randint(0, entity.shape[0] - insert.shape[0]), random_state.randint(0, entity.shape[1] - insert.shape[1]))
 
         # peform merge
         data = deepcopy(entity.get_data())
-        data[pos[0]:pos[0] + overlay.shape[0], pos[1]:pos[1] + overlay.shape[1]] = overlay.get_data()
+        data[pos[0]:pos[0] + insert.shape[0], pos[1]:pos[1] + insert.shape[1]] = insert.get_data()
 
         # set data
         if inplace:
@@ -381,6 +387,82 @@ class InsertMerge(Merge):
             entity = deepcopy(entity)
             entity.set_data(data)
         return entity
+
+
+class PoisonPipeline(Pipeline):
+
+    def __init__(self) -> None:
+        pass
+    
+    def process(self, entities: np.ndarray, patches: np.ndarray, operations: Iterable[list]=None, merge: Merge=None, pct: float=0.2, random_state: np.random.RandomState=None) -> np.ndarray:
+        # set args
+        if random_state is None:
+            random_state = np.random.RandomState()
+
+        modified = []
+        n = len(entities)
+        indices = random_state.choice(n, int(pct * n), replace=False)
+
+        # peform transforms
+        if operations:
+            # get transforms
+            entity_ops = operations[0]
+            patch_ops = operations[1]
+            select_ops = operations[2]
+
+            # transfroms on entities
+            if entity_ops:
+                for i, entity in enumerate(entities):
+                    for transform in entity_ops:
+                        entity = transform.do(entity, random_state)
+                    entities[i] = entity
+            
+            # transforms on patches
+            if patch_ops:
+                for i, patch in enumerate(patches):
+                    for transform in patch_ops:
+                        patch = transform.do(patch, random_state)
+                    patches[i] = patch
+
+            # transforms on selected entities
+            if select_ops:
+                selected = deepcopy(entities)
+                for i in indices:
+                    entity = selected[i]
+                    for transform in select_ops:
+                        entity = transform.do(entity, random_state)
+                    selected[i] = entity
+        
+        modified.append(entities), modified.append(patches)
+
+        if merge is not None:
+            if merge.select:
+                merged = deepcopy(selected)
+                # merges on selected entities
+                for i in indices:
+                    entity, patch = merged[i], patches[i]
+                    entity = merge.do(entity, patch, random_state)
+                    merged[i] = entity
+            else:
+                merged = deepcopy(entities)
+                # merges on entities
+                for i in range(n):
+                    entity, patch = merged[i], patches[i]
+                    entity = merge.do(entity, patch, random_state)
+                    merged[i] = entity
+            modified.append(merged)
+        # no merges
+        else:
+            modified.append(None)
+
+        return np.array(modified)
+
+
+
+                
+                
+
+       
 
         
 

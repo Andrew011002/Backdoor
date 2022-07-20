@@ -5,6 +5,8 @@ from torch.nn import Module
 from torch.utils.data import DataLoader
 from torch.nn import BCELoss, CrossEntropyLoss
 from nets import FcNet, ConvNet
+from datasets import *
+from datagen import *
 
 
 nets = {'fcnet': FcNet,
@@ -21,16 +23,14 @@ losses = {'crossentropy': CrossEntropyLoss,
 
 class NetModule(Module):
 
-    def __init__(self, net: Module, optimizer: str, loss: str, **kwargs) -> None:
+    def __init__(self, net: Module, optimizer: str, loss: str, **optim_kwargs) -> None:
         super(NetModule, self).__init__()
         self.net = net
-        self.optimizer = optimizers.get(optimizer.lower().strip(), KeyError('Optimizer not found'))
-        self.loss = losses.get(loss.lower().strip(), KeyError('Loss not found'))
+        self.optimizer = optimizers.get(optimizer.lower().strip(), KeyError('Optimizer not found'))(net.parameters(), **optim_kwargs)
+        self.loss = losses.get(loss.lower().strip(), KeyError('Loss not found'))()
         self.params = self.net.parameters()
-        self.kwargs = kwargs
 
     def train(self, device=None) -> None:
-        self.optimizer = self.optimizer(self.net.parameters(), **self.kwargs)
         self.net.to(device)
         self.net.train()
         print(f'Net ready for training')
@@ -47,9 +47,9 @@ class NetModule(Module):
         torch.save(self.net.state_dict(), path)
         print(f'Net saved to {path}')
 
-def load_net(name: str, config: str, **kwargs) -> Module:
+def load_net(name: str, config: str, **net_kwargs) -> Module:
     net = nets.get(name.lower().strip(), KeyError('Net not found'))
-    net = net(config, **kwargs)
+    net = net(config, **net_kwargs)
     return net
 
 # trains network on trainloader
@@ -57,11 +57,11 @@ def train(net_module: NetModule, trainloader: DataLoader, epochs: int, verbose: 
     net_module.train(device)
     n = len(trainloader.dataset)
     m = len(trainloader)
-    accum_loss = 0
-
+    net_loss = 0
     print(f'Training started')
 
     for epoch in range(epochs):
+        accum_loss = 0
         samples_trained = 0
 
         for i, data in enumerate(trainloader, 0):
@@ -75,6 +75,7 @@ def train(net_module: NetModule, trainloader: DataLoader, epochs: int, verbose: 
             net_module.optimizer.zero_grad()
             loss.backward()
             net_module.optimizer.step()
+            # accumulate avg loss for this batch
             accum_loss += loss.item()
             samples_trained += inputs.size(0)
 
@@ -83,12 +84,14 @@ def train(net_module: NetModule, trainloader: DataLoader, epochs: int, verbose: 
                 # show every 25% of the trainset
                 if (i + 1) % int(m * 0.25) == 0:
                     print(f'Epoch {epoch + 1}/{epochs} | {(i + 1) * 100 / m:.2f}% | Loss: {accum_loss / (i + 1):.4f} | Samples trained: {samples_trained}/{n}')
+        # running sum for net loss
+        net_loss += accum_loss
         if verbose:
             print(f'Epoch {epoch + 1} complete | Loss: {accum_loss / (i + 1):.4f}')
     # calculate net loss
-    net_loss = accum_loss / m
+    net_loss /= epochs * m
     if verbose:
-        print(f'Training complete | Net Loss: {net_loss:.4f} | Total epochs: {epochs}')
+        print(f'Training complete | Net Average Loss: {net_loss:.4f} | Total epochs: {epochs}')
     return net_loss
     
 
@@ -120,8 +123,8 @@ def test(net_module: NetModule, testloader: DataLoader, verbose: bool=True, devi
 
             if verbose:
                 # show every 25% of the testset
-                if (i + 1) % (m * 0.25) == 0:
-                    print(f'{(i + 1) * 100 / m}% Testing complete | Loss: {accum_loss / (i + 1):.4f} | Accuracy: {correct / samples_seen:.4f}')
+                if (i + 1) % int(m * 0.25) == 0:
+                    print(f'{(i + 1) * 100 / m:.2f}% Testing complete | Loss: {accum_loss / (i + 1):.4f} | Accuracy: {correct / samples_seen:.4f}')
 
     # calculate accuracy and net loss
     acc = correct / n
@@ -132,7 +135,7 @@ def test(net_module: NetModule, testloader: DataLoader, verbose: bool=True, devi
     return net_loss, acc
 
 if __name__ == '__main__':
-    net = load_net('fcnet', '8-layer', input_dim=(32, 32, 3), classes=10)
+    net = load_net('convnet', '11-layer', channels=3, classes=10, dropout=0.5)
     net_module = NetModule(net, 'sgd', 'crossentropy', lr=0.01)
     net_module.train()
     net_module.eval()
