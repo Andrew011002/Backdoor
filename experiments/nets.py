@@ -107,23 +107,78 @@ class ConvNet(nn.Module):
 
         self.layers = nn.Sequential(*self.layers) # create sequential layer (so cuda works)
 
+class LeNet5(nn.Module):
 
+    def __init__(self, channels: int, classes: int) -> None:
+        super(LeNet5, self).__init__()
+        self.channels = channels
+        self.conv1 = nn.Conv2d(channels, 6, 5, 1)
+        self.conv2 = nn.Conv2d(6, 16, 5, 1)
+        self.conv3 = nn.Conv2d(16, 120, 5, 1)
+        self.avgpool = nn.AvgPool2d(2, 2)
+        self.fc1 = nn.Linear(120, 84)
+        self.fc2 = nn.Linear(84, classes)
+
+    def forward(self, x) -> torch.Tensor:
+        x = x.permute(0, 3, 2, 1) # resahpe: (batch, height, width, channels)
+
+        # conv + avg pool layers
+        x = f.relu(self.conv1(x))
+        x = self.avgpool(x)
+        x = f.relu(self.conv2(x))
+        x = self.avgpool(x)
+        x = f.relu(self.conv3(x))
+
+        # fc layers
+        x = torch.flatten(x, 1)
+        x = f.relu(self.fc1(x))
+        # out layer
+        out = self.fc2(x)
+        return out
+
+
+class AlexNet(nn.Module):
+
+    def __init__(self, channels: int, classes: int, dropout: float=0.5, batch_norm: bool=True) -> None:
+        super(AlexNet, self).__init__()
+        # conv layers
+        self.conv1 = nn.Conv2d(channels, 96, 11, 4, 0)
+        self.conv2 = nn.Conv2d(96, 256, 5, 1, 2)
+        self.conv3 = nn.Conv2d(256, 384, 3, 1, 1)
+        self.conv4 = nn.Conv2d(384, 384, 3, 1, 1)
+        self.conv5 = nn.Conv2d(384, 256, 3, 1, 1)
+        # max pool layer
+        self.maxpool = nn.MaxPool2d(2, 2)
+
+        # batch norm layers
+        self.norm1 = nn.BatchNorm2d(96)
+        self.norm2 = nn.BatchNorm2d(256)
+        self.dropout = nn.Dropout(dropout)
+        self.fc1 = nn.Linear(256 * 6 * 6, 4096)
+        self.fc2 = nn.Linear(4096, 4096)
+        self.fc3 = nn.Linear(4096, classes)
+
+    def forward(self, x) -> torch.Tensor:
+        x = x.permute(0, 3, 1, 2) # reshape: (batch, channels, height, width)
 
 if __name__ == '__main__':
     # init nets & data
     convet = ConvNet('11-layer', 3, classes=10)
-    fcnet = FcNet('8-layer', input_dim=(28, 28, 3), classes=10)
-    images = torch.Tensor(torch.rand(32, 28, 28, 3))
+    fcnet = FcNet('8-layer', input_dim=(32, 32, 3), classes=10)
+    lenet = LeNet5(3, classes=10)
+    images = torch.Tensor(torch.rand(32, 32, 32, 3))
     print(images.size())
 
     # use GPU
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     convet.to(device)
     fcnet.to(device)
+    lenet.to(device)
     images = images.to(device)
 
 
     # forward pass
+    print(lenet(images).shape)
     print(convet(images).shape)
     print(fcnet(images).shape)
 

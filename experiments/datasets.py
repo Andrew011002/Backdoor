@@ -1,10 +1,9 @@
 import numpy as np
-import torchvision
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
-from datagen import ImageEntity, TextEntity, DataEntity
+from datagen import DataEntity
 import os
 
 path = os.path.abspath(os.path.dirname(__file__))

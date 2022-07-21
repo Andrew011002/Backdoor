@@ -101,23 +101,46 @@ class Backdoor:
         if self.cleantest is None or self.poisontest is None:
             raise ValueError('no training data was created')
 
-        # metrics [base acc clean, trojan acc clean, base acc poison, trojan acc poison]
-        accs = [None, None, None, None]
+        # metrics [base acc clean, trojan acc clean, base acc poison, trojan acc poison, avg tensor dist, net tensor dist]
+        accs = [None, None, None, None, None, None]
 
         cleanloader, poisonloader = self.cleantest.get_dataloader(), self.poisontest.get_dataloader()
 
         # clean testloader
         accs[0], accs[1] = test(self.base, cleanloader, False, device)[1], test(self.trojan, cleanloader, False, device)[1]
+        diff = abs(accs[0] - accs[1]) # peformance difference
 
         # poison testloader
         accs[2], accs[3] = test(self.base, poisonloader, False, device)[1], test(self.trojan, poisonloader, False, device)[1]
 
+        # euclidean distance for tensors
+        accs[4], accs[5] = self.tensor_euclidean()
+
         if verbose:
-            diff = abs(accs[0] - accs[1])
             print(f'Accuracy on Clean | Base {accs[0] * 100:.2f}% | Trojan {accs[1] * 100:.2f}% | Difference {diff * 100:.2f}%')
             print(f'Base Accuracy on Poison {accs[2] * 100:.2f}% | Attack Success Rate (ASR): {(accs[3] - accs[2]) * 100:.2f}%')
+            print(f'Average Tensor Distance: {accs[4]:.2f} | Net Difference {accs[5]:.2f}')
 
         return tuple(accs)
+
+    def tensor_euclidean(self) -> tuple:
+        # set metrics
+        accum_dist = 0
+
+        # clean and poison tensors
+        cleantensors, poisontensors = self.cleantrain.get_tensorset().tensors[0], self.poisontrain.get_tensorset().tensors[0]
+
+        # find euclidean distance for all tensors
+        for cleantensor, poisontensor in zip(cleantensors, poisontensors):
+            accum_dist += (cleantensor.squeeze(dim=-1) - poisontensor.squeeze(dim=-1)).pow(2).sum().sqrt().item()
+        
+        # return average and net difference between tensors
+        return accum_dist / len(cleantensors), accum_dist
+
+    def __len__(self) -> int:
+        return len(self.traindata)
+
+
 
 if __name__ == '__main__':
     backdoor = Backdoor('convnet', '11-layer', channels=3, classes=10)

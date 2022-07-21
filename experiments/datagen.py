@@ -1,5 +1,4 @@
 import numpy as np
-import nltk
 import matplotlib.pyplot as plt
 from abc import abstractclassmethod
 from trojai.datagen.entity import Entity
@@ -10,8 +9,6 @@ from string import punctuation
 from nltk.corpus import stopwords
 from typing import Iterable
 from copy import deepcopy
-
-# nltk.download('stopwords')
 
 
 class DataEntity(Entity):
