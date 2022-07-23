@@ -3,9 +3,10 @@ import numpy as np
 from copy import deepcopy
 from modules import NetModule, Module, Optimizer, _Loss, train, test
 from datasets import load_dataset, EntitySet
-from datagen import PoisonPipeline, Merge, Transform
+from datagen import DataEntity, PoisonPipeline, Merge, Transform
 from typing import Iterable
 from torchvision.transforms import Compose
+from torch.utils.data import Dataset
 
 
 class Backdoor:
@@ -19,10 +20,12 @@ class Backdoor:
         self.base = NetModule(deepcopy(self.net), optimizer, loss, **optim_kwargs)
         self.trojan = NetModule(deepcopy(self.net), optimizer, loss, **optim_kwargs)
 
-    def load_data(self, dataset: str, etype: str, transforms: Compose=None, path: str='./data', download: bool=True) -> None:
+    def load_data(self, dataset: Dataset, etype: DataEntity, transforms: Compose=None, 
+                    path: str='./data', download: bool=True, pct: float=1) -> None:
         # load test & train data
-        traindata, classes = load_dataset(dataset, transforms, path, True, download, etype)
-        testdata, classes = load_dataset(dataset, transforms, path, False, download, etype)
+        traindata, classes = load_dataset(dataset, transforms, path, True, download, etype, pct)
+        testdata, classes = load_dataset(dataset, transforms, path, False, download, etype, pct)
+        # set train & test datasets
         self.traindata, self.testdata, self.classes = traindata, testdata, classes
 
     def poison(self, patches: np.ndarray, transforms: Iterable[Transform], merge: Merge, pct: float, 
@@ -36,6 +39,7 @@ class Backdoor:
         # numpy arrays for training data 
         cleantrain, poisontrain = pipeline.process(self.traindata, patches, transforms, merge, pct, random_state)
         cleantest, poisontest = pipeline.process(self.testdata, patches, transforms, merge, 1, random_state)
+        # set train & test entitysets
         self.cleantrain, self.poisontrain = EntitySet(cleantrain, self.classes), EntitySet(poisontrain, self.classes)
         self.cleantest, self.poisontest = EntitySet(cleantest, self.classes), EntitySet(poisontest, self.classes)
 
@@ -76,23 +80,23 @@ class Backdoor:
             raise ValueError('no models created')
 
         # metrics [base loss, base acc, trojan loss, trojan acc]
-        losses_accs = [None, None, None, None]
+        metrics = [None, None, None, None]
 
         testloader = self.cleantest.get_dataloader(**dataloader_kwargs) # clean testloader (only)
         # train base
         if net == 0:
-            losses_accs[0], losses_accs[1] = test(self.base, testloader, verbose, device)
+            metrics[0], metrics[1] = test(self.base, testloader, verbose, device)
         # train trojan
         elif net == 1:
-            losses_accs[2], losses_accs[3] = test(self.trojan, testloader, verbose, device)
+            metrics[2], metrics[3] = test(self.trojan, testloader, verbose, device)
         # train both
         elif net == 2:
-            losses_accs[0], losses_accs[1] = test(self.base, testloader, verbose, device)
-            losses_accs[2], losses_accs[3] = test(self.trojan, testloader, verbose, device)
+            metrics[0], metrics[1] = test(self.base, testloader, verbose, device)
+            metrics[2], metrics[3] = test(self.trojan, testloader, verbose, device)
         else:
             raise ValueError('invalid int keys [0: base, 1: trojan, 2: both]')
 
-        return tuple(losses_accs)
+        return tuple(metrics)
 
 
     def eval(self, verbose: bool=True, device: torch.device=None) -> None:
@@ -102,26 +106,25 @@ class Backdoor:
             raise ValueError('no training data was created')
 
         # metrics [base acc clean, trojan acc clean, base acc poison, trojan acc poison, avg tensor dist, net tensor dist]
-        accs = [None, None, None, None, None, None]
+        metrics = [None, None, None, None, None, None]
 
         cleanloader, poisonloader = self.cleantest.get_dataloader(), self.poisontest.get_dataloader()
 
         # clean testloader
-        accs[0], accs[1] = test(self.base, cleanloader, False, device)[1], test(self.trojan, cleanloader, False, device)[1]
-        diff = abs(accs[0] - accs[1]) # peformance difference
+        metrics[0], metrics[1] = test(self.base, cleanloader, False, device)[1], test(self.trojan, cleanloader, False, device)[1]
 
         # poison testloader
-        accs[2], accs[3] = test(self.base, poisonloader, False, device)[1], test(self.trojan, poisonloader, False, device)[1]
+        metrics[2], metrics[3] = test(self.base, poisonloader, False, device)[1], test(self.trojan, poisonloader, False, device)[1]
 
         # euclidean distance for tensors
-        accs[4], accs[5] = self.tensor_euclidean()
+        metrics[4], metrics[5] = self.tensor_euclidean()
 
         if verbose:
-            print(f'Accuracy on Clean | Base {accs[0] * 100:.2f}% | Trojan {accs[1] * 100:.2f}% | Difference {diff * 100:.2f}%')
-            print(f'Base Accuracy on Poison {accs[2] * 100:.2f}% | Attack Success Rate (ASR): {(accs[3] - accs[2]) * 100:.2f}%')
-            print(f'Average Tensor Distance: {accs[4]:.2f} | Net Difference {accs[5]:.2f}')
+            print(f'Accuracy on Clean | Base {metrics[0] * 100:.2f}% | Trojan {metrics[1] * 100:.2f}% | Difference {(metrics[1] - metrics[0]) * 100:.2f}%')
+            print(f'Base Accuracy on Poison {metrics[2] * 100:.2f}% | Attack Success Rate (ASR): {metrics[3] * 100:.2f}%')
+            print(f'Average Tensor Distance: {metrics[4]:.2f} | Net Tensor Difference {metrics[5]:.2f}')
 
-        return tuple(accs)
+        return tuple(metrics)
 
     def tensor_euclidean(self) -> tuple:
         # set metrics
@@ -140,7 +143,14 @@ class Backdoor:
     def __len__(self) -> int:
         return len(self.traindata)
 
+    def get_net_modules(self) -> tuple:
+        return self.base, self.trojan
 
+    def get_datasets(self) -> tuple:
+        return self.cleantrain, self.poisontrain, self.cleantest, self.poisontest
+
+    def get_classes(self) -> dict:
+        return self.classes
 
 if __name__ == '__main__':
     backdoor = Backdoor('convnet', '11-layer', channels=3, classes=10)

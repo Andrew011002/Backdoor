@@ -44,14 +44,17 @@ class EntitySet(Dataset):
     def get_dataloader(self, **kwargs) -> DataLoader:
         # create dataloader if kwargs passed
         if kwargs:
-            self.dataloader = self.create_dataloader(**kwargs)
+            return self.create_dataloader(**kwargs)
         return self.dataloader
 
     def __len__(self) -> int:
         return len(self.entities)
 
-    def __getitem__(self, index) -> DataEntity:
+    def __getitem__(self, index: int) -> DataEntity:
         return self.entities[index]
+
+    def __setitem__(self, index: int, entity: DataEntity):
+        self.entities[index] = entity
 
 
 def numpy_to_entity(input_data: np.ndarray, labels: np.ndarray, dtype: DataEntity) -> np.ndarray:
@@ -63,7 +66,7 @@ def numpy_to_entity(input_data: np.ndarray, labels: np.ndarray, dtype: DataEntit
     return np.array([dtype(data, label) for data, label in zip(input_data, labels)])
 
 def load_dataset(dataset: Dataset, transforms: list=None, path: str='./data', train: bool=True, 
-                download: bool=True, etype: DataEntity=None) -> tuple:
+                download: bool=True, etype: DataEntity=None, pct: float=1) -> tuple:
 
     """
 
@@ -71,7 +74,8 @@ def load_dataset(dataset: Dataset, transforms: list=None, path: str='./data', tr
 
     # pull dataset
     dataset = dataset(root=path, train=train, download=download, transform=transforms)
-    input_data, target_data = dataset.data, dataset.targets
+    n = len(dataset.data)
+    input_data, target_data = dataset.data[:int(n * pct)], dataset.targets[:int(n * pct)]
 
     # convert to numpy (if needed)
     try:

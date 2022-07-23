@@ -54,11 +54,11 @@ vgg_configs = {'11-layer': [64, 'pool', 128, 'pool', 256, 256, 'pool', 512, 512,
 '16-layer': [64, 64, 'pool', 128, 128, 'pool', 256, 256, 256, 'pool', 512, 512, 512, 'pool', 512, 512, 512, 'pool'],
 '19-layer': [64, 64, 'pool', 128, 128, 'pool', 256, 256, 256, 256, 'pool', 512, 512, 512, 512, 'pool', 512, 512, 512, 512, 'pool']}
 
-class ConvNet(nn.Module):
+class VggNet(nn.Module):
 
     def __init__(self, config: str, channels: int, classes: int, dropout: float=0.5):
 
-        super(ConvNet, self).__init__()
+        super(VggNet, self).__init__()
         self.channels = channels
         self.config = vgg_configs[config]
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
@@ -72,11 +72,9 @@ class ConvNet(nn.Module):
         x = x.permute(0, 3, 1, 2) # (batch, channels, height, width)
         for layer in self.layers:
             if type(layer) == nn.Conv2d:
-                x = layer(x) 
-            elif type(layer) == nn.BatchNorm2d:
-                x = f.relu(layer(x)) # apply relu after batch norm
+                x = f.relu(layer(x))
             else:
-                x = layer(x) # pool layer
+                x = layer(x) # pool layer or batch norm
 
         # average pool and flatten
         x = self.avgpool(x)
@@ -132,6 +130,7 @@ class LeNet5(nn.Module):
         # fc layers
         x = torch.flatten(x, 1)
         x = f.relu(self.fc1(x))
+
         # out layer
         out = self.fc2(x)
         return out
@@ -139,34 +138,57 @@ class LeNet5(nn.Module):
 
 class AlexNet(nn.Module):
 
-    def __init__(self, channels: int, classes: int, dropout: float=0.5, batch_norm: bool=True) -> None:
+    def __init__(self, channels: int, classes: int, dropout: float=0.5) -> None:
         super(AlexNet, self).__init__()
         # conv layers
-        self.conv1 = nn.Conv2d(channels, 96, 11, 4, 0)
+        self.conv1 = nn.Conv2d(channels, 96, 11, 4)
         self.conv2 = nn.Conv2d(96, 256, 5, 1, 2)
         self.conv3 = nn.Conv2d(256, 384, 3, 1, 1)
         self.conv4 = nn.Conv2d(384, 384, 3, 1, 1)
         self.conv5 = nn.Conv2d(384, 256, 3, 1, 1)
-        # max pool layer
-        self.maxpool = nn.MaxPool2d(2, 2)
 
-        # batch norm layers
+        # other layers
+        self.maxpool = nn.MaxPool2d(3, 2)
+        self.dropout = nn.Dropout(dropout)
         self.norm1 = nn.BatchNorm2d(96)
         self.norm2 = nn.BatchNorm2d(256)
-        self.dropout = nn.Dropout(dropout)
-        self.fc1 = nn.Linear(256 * 6 * 6, 4096)
+
+        # fc layers
+        self.fc1 = nn.Linear(256 * 5 * 5, 4096)
         self.fc2 = nn.Linear(4096, 4096)
         self.fc3 = nn.Linear(4096, classes)
 
     def forward(self, x) -> torch.Tensor:
-        x = x.permute(0, 3, 1, 2) # reshape: (batch, channels, height, width)
+        x = x.permute(0, 3, 2, 1) # reshape: (batch_size, channels, height, width)
+
+        # (conv + relu + norm + pool) *2
+        x = self.norm1(f.relu(self.conv1(x)))
+        x = self.maxpool(x)
+        x = self.norm2(f.relu(self.conv2(x)))
+        x = self.maxpool(x)
+
+        # (conv + relu) *3 + pool
+        x = f.relu(self.conv3(x))
+        x = f.relu(self.conv4(x))
+        x = f.relu(self.conv5(x))
+        x = self.maxpool(x)
+
+        # fc layers
+        x = torch.flatten(x, 1)
+        x = self.dropout(f.relu(self.fc1(x)))
+        x = self.dropout(f.relu(self.fc2(x)))
+
+        # out layer
+        out = f.relu(self.fc3(x))
+        return out
 
 if __name__ == '__main__':
     # init nets & data
-    convet = ConvNet('11-layer', 3, classes=10)
-    fcnet = FcNet('8-layer', input_dim=(32, 32, 3), classes=10)
+    convet = VggNet('11-layer', 3, classes=10)
+    fcnet = FcNet('8-layer', input_dim=(224, 224, 3), classes=10)
     lenet = LeNet5(3, classes=10)
-    images = torch.Tensor(torch.rand(32, 32, 32, 3))
+    alexnet = AlexNet(3, classes=10)
+    images = torch.Tensor(torch.rand(16, 224, 224, 3))
     print(images.size())
 
     # use GPU
@@ -174,13 +196,15 @@ if __name__ == '__main__':
     convet.to(device)
     fcnet.to(device)
     lenet.to(device)
+    alexnet.to(device)
     images = images.to(device)
 
 
     # forward pass
-    print(lenet(images).shape)
+    # print(lenet(images).shape)
     print(convet(images).shape)
     print(fcnet(images).shape)
+    print(alexnet(images).shape)
 
 
 

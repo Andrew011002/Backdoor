@@ -3,10 +3,11 @@ import numpy as np
 from torch.nn import Module
 from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
-from torch.nn import CrossEntropyLoss, BCELoss
-from torch.optim import Optimizer, SGD, Adam
+from torch.nn import CrossEntropyLoss
+from copy import deepcopy
+from torch.optim import Optimizer, SGD
 from datasets import DataLoader
-from nets import ConvNet, FcNet
+from nets import *
 
 
 class NetModule(Module):
@@ -14,9 +15,10 @@ class NetModule(Module):
     def __init__(self, net: Module, optimizer: Optimizer, loss: _Loss, **optim_kwargs) -> None:
         super(NetModule, self).__init__()
         self.net = net
-        self.optimizer = optimizer(net.parameters(), **optim_kwargs)
         self.loss = loss()
-        self.params = self.net.parameters()
+        self.optimizer = optimizer(net.parameters(), **optim_kwargs)
+        self.optim_kwargs = optim_kwargs
+        self.prarams = [deepcopy(net), optimizer, loss]
 
     def train(self, device=None) -> None:
         # move net to device
@@ -34,6 +36,59 @@ class NetModule(Module):
     def save(self, path):
         torch.save(self.net.state_dict(), path)
         print(f'Net saved to {path}')
+
+    def get_modules(self) -> dict:
+        # get named layers
+        modules = list(self.net.named_modules())[1:]
+        mappings = dict()
+        # map to layer names to their modules
+        for name, layer in modules:
+            mappings[name] = layer
+        return mappings
+
+    def view_named_modules(self) -> None:
+        # get named layers
+        modules = list(self.net.named_modules())[1:]
+        # map to layer names to their modules
+        for name, layer in modules:
+            print(f'{name}: {layer}')
+
+    def view_module_named_parameters(self, module: str) -> None:
+        #  veiwa named parameters of specific module (named layer)
+        modules = self.get_modules()
+        return list(modules[module].named_parameters())
+
+    def view_module_named_buffers(self, module: str) -> None:
+        # view named buffers of specific module (named layer)
+        modules = self.get_modules()
+        return list(modules[module].named_buffers())
+
+    def set_net(self, net: Module) -> None:
+        # replace net
+        self.net = net
+
+    def set_optimizer(self, optimizer: Optimizer) -> None:
+        # replace optimizer
+        self.optimizer = optimizer
+    
+    def set_loss(self, loss: _Loss) -> None:
+        # replace loss function
+        self.loss = loss
+
+    def __getitem__(self, module: str) -> Module:
+        # get module (named layers)
+        modules = self.get_modules()
+        return modules[module]
+
+    def __deepcopy__(self, memo) -> 'NetModule':
+        # create new copy without reference
+        module = NetModule(*self.prarams, **self.optim_kwargs)
+        # replace attributes
+        module.set_net(deepcopy(self.net))
+        module.set_optimizer(deepcopy(self.optimizer))
+        module.set_loss(deepcopy(self.loss))
+        return module
+
 
 
 # trains network on trainloader
@@ -117,12 +172,12 @@ def test(net_module: NetModule, testloader: DataLoader, verbose: bool=True, devi
     acc = correct / n
     net_loss = accum_loss / m
     if verbose:
-        print(f'Testing complete | Loss: {net_loss:.4f} | Accuracy: {acc:.4f}')
+        print(f'Testing complete | Loss: {net_loss:.4f} | Accuracy: {acc * 100:.2f}%')
 
     return net_loss, acc
 
 if __name__ == '__main__':
-    net = ConvNet('11-layer', channels=3, classes=10)
+    net = VggNet('11-layer', channels=3, classes=10)
     net_module = NetModule(net, SGD, CrossEntropyLoss, lr=0.01)
     net_module.train()
     net_module.eval()
