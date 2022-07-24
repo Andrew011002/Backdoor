@@ -27,14 +27,17 @@ class Defense:
         loss = train(self.defense, trainloader, epochs, verbose, device)
         return loss
 
-    def test(self, testloader: DataLoader=None, verbose: bool=True, device: torch.device=None, **dataloader_kwargs) -> tuple:
+    def test(self, net_module: NetModule=None, testloader: DataLoader=None, verbose: bool=True, device: torch.device=None, **dataloader_kwargs) -> tuple:
         # get clean testloader
         if testloader is None:
             cleantrain, poisontrain, cleantest, poisontest = self.backdoor.get_datasets()
             testloader = cleantest.get_dataloader(**dataloader_kwargs)
+        # get net module
+        if net_module is None:
+            net_module = self.defense
 
         # test net
-        loss, acc = test(self.defense, testloader, verbose, device)
+        loss, acc = test(net_module, testloader, verbose, device)
         return loss, acc
 
     def eval(self, cleanloader: DataLoader=None, poisonloader: DataLoader=None, verbose: bool=True, 
@@ -51,16 +54,16 @@ class Defense:
         base, trojan = self.backdoor.get_net_modules()
 
         # base peformance
-        metrics[0] = test(base, cleanloader, False, device)[1]
-        metrics[1] = test(base, poisonloader, False, device)[1]
+        metrics[0] = test(base, cleanloader, verbose=False, device=device)[1]
+        metrics[1] = test(base, poisonloader, verbose=False, device=device)[1]
 
         # trojan peformance
-        metrics[2] = test(trojan, cleanloader, False, device)[1]
-        metrics[3] = test(trojan, poisonloader, False, device)[1]
+        metrics[2] = test(trojan, cleanloader, verbose=False, device=device)[1]
+        metrics[3] = test(trojan, poisonloader, verbose=False, device=device)[1]
 
         # defense peformance
-        metrics[4] = test(self.defense, cleanloader, False, device)[1]
-        metrics[5] = test(self.defense, poisonloader, False, device)[1]
+        metrics[4] = test(self.defense, cleanloader, verbose=False, device=device)[1]
+        metrics[5] = test(self.defense, poisonloader, verbose=False, device=device)[1]
         diff = metrics[3] - metrics[5]
 
         # show info
@@ -132,7 +135,7 @@ class Defense:
         for layer in layers:
             LnStructured(amount, norm, dim).apply(layer, name='weight', amount=amount, n=norm, dim=dim)
 
-    def block(self, dataset: EntitySet=None, patch: ImagePatch=None, threshold: float=5, **dataloader_kwargs) -> DataLoader:
+    def block(self, dataset: EntitySet=None, patch: ImagePatch=None, labels: dict=None, n: int=None, **dataloader_kwargs) -> DataLoader:
         # get entityset
         if dataset is None:
             cleantrain, poisontrain, cleantest, poisontest = self.backdoor.get_datasets()
@@ -140,26 +143,42 @@ class Defense:
         # get patch
         if patch is None:
             patch = ImagePatch((9, 9), dataset[0].channels, palette='random')
-
+        # get size
+        if n is None:
+            n = len(dataset)
+            
         # patch entities
         entities = deepcopy(dataset.get_entities())
-        for index, entity in enumerate(entities):
+        patch_var = np.var(patch.get_data())
+        modified = []
+        for index in range(n):
+            entity = entities[index]
+            locals = []
             for i in range(entity.shape[0] - patch.shape[0]):
                 for j in range(entity.shape[1] - patch.shape[1]):
                     # local region
                     local = entity.get_data()[i:i + patch.shape[0], j:j + patch.shape[1], :]
-                    diff = abs(np.linalg.norm(local) - np.linalg.norm(patch.get_data()))
-                    if diff <= threshold:
-                        # paste patch into local region
-                        data = deepcopy(entity.get_data())
-                        data[i: i + patch.shape[0], j: j + patch.shape[1], :] = 0
-                        entity.set_data(data)
-                        break
-                break
-            # assign entity to dataset
-            entities[index] = entity
-        # update dataset with new blocked patches
-        entityset = EntitySet(dataset, dataset.classes)
+                    var = np.var(local)
+                    if var >= patch_var:
+                        locals.append((var, (i, i + patch.shape[0], j, j + patch.shape[1])))
+            
+            # find region with highest variance in image
+            if locals:
+                localization = max(locals, key=lambda x: x[0])[1] 
+                h1, h2, w1, w2 = localization
+                # set data & entity
+                data = deepcopy(entity.get_data())
+                data[h1: h2, w1: w2, :] = int(np.mean(data))
+                entity.set_data(data)
+                # fix label if applicable
+                if labels:
+                    target = entity.get_label()
+                    entity.set_label(labels[target])
+                # add to modified set
+                modified.append(entity)
+                        
+        # create entity set
+        entityset = EntitySet(np.array(modified), dataset.classes)
         return entityset.get_dataloader(**dataloader_kwargs)
 
     def reset(self) -> None:
