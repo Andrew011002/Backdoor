@@ -1,10 +1,11 @@
+import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
 from datagen import DataEntity
-import os
+from copy import deepcopy
 
 path = os.path.abspath(os.path.dirname(__file__))
 
@@ -44,8 +45,12 @@ class EntitySet(Dataset):
     def get_dataloader(self, **kwargs) -> DataLoader:
         # create dataloader if kwargs passed
         if kwargs:
-            return self.create_dataloader(**kwargs)
+            return self.create_dataloader(**kwargs)           
         return self.dataloader
+    
+    def update(self):
+        self.tensorset = self.create_tensorset()
+        self.dataloader = self.create_dataloader()
 
     def __len__(self) -> int:
         return len(self.entities)
@@ -53,8 +58,11 @@ class EntitySet(Dataset):
     def __getitem__(self, index: int) -> DataEntity:
         return self.entities[index]
 
-    def __setitem__(self, index: int, entity: DataEntity):
+    def __setitem__(self, index: int, entity: DataEntity) -> None:
         self.entities[index] = entity
+
+    def __deepcopy__(self, memo):
+        return EntitySet(deepcopy(self.entities), deepcopy(self.classes))
 
 
 def numpy_to_entity(input_data: np.ndarray, labels: np.ndarray, dtype: DataEntity) -> np.ndarray:

@@ -321,7 +321,7 @@ class StopwordsTransform(Transform):
             entity.set_data(data)
         return entity
 
-class OverlayMerge(Merge):
+class ImageMerge(Merge):
 
     """
     
@@ -351,7 +351,7 @@ class OverlayMerge(Merge):
             entity.set_data(data)
         return entity
 
-class InsertMerge(Merge):
+class TextMerge(Merge):
 
     """
     
