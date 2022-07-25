@@ -75,7 +75,7 @@ class Defense:
 
         return tuple(metrics)
 
-    def detect(self, net_module: NetModule=None, dataset: EntitySet=None, threshold: float=0.3, size_ranges: Iterable[tuple]=None, 
+    def detect(self, net_module: NetModule=None, dataset: EntitySet=None, threshold: float=0.1, size_ranges: Iterable[tuple]=None, 
             pct: float=0.2, verbose: bool=True, device: torch.device=None, **dataloader_kwargs) -> tuple:
         # get net module
         if net_module is None:
@@ -158,17 +158,19 @@ class Defense:
                 for j in range(entity.shape[1] - patch.shape[1]):
                     # local region
                     local = entity.get_data()[i:i + patch.shape[0], j:j + patch.shape[1], :]
+                    # variance
                     var = np.var(local)
                     if var >= patch_var:
                         locals.append((var, (i, i + patch.shape[0], j, j + patch.shape[1])))
             
-            # find region with highest variance in image
+            # find highest local region
             if locals:
                 localization = max(locals, key=lambda x: x[0])[1] 
                 h1, h2, w1, w2 = localization
-                # set data & entity
+                # replace region with average color
                 data = deepcopy(entity.get_data())
-                data[h1: h2, w1: w2, :] = int(np.mean(data))
+                avg_color = data.mean(axis=0).mean(axis=0)
+                data[h1: h2, w1: w2, :] = avg_color
                 entity.set_data(data)
                 # fix label if applicable
                 if labels:
@@ -180,6 +182,9 @@ class Defense:
         # create entity set
         entityset = EntitySet(np.array(modified), dataset.classes)
         return entityset.get_dataloader(**dataloader_kwargs)
+
+    def get_module(self) -> NetModule:
+        return self.defense
 
     def reset(self) -> None:
         self.defense = deepcopy(self.backdoor.get_net_modules()[1])

@@ -61,7 +61,7 @@ class EntitySet(Dataset):
     def __setitem__(self, index: int, entity: DataEntity) -> None:
         self.entities[index] = entity
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo) -> 'EntitySet':
         return EntitySet(deepcopy(self.entities), deepcopy(self.classes))
 
 
