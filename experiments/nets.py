@@ -12,7 +12,29 @@ fc_configs = {'4-layer': [512, 256, 128, 64],
 
 class FcNet(nn.Module):
 
+    """
+    A class derived from nn.Moudle that
+    implements a basic Fully Connected Network.
+    """
+
     def __init__(self, config: str, input_dim: tuple, classes: int, dropout: float=0.5):
+        
+        """
+        Initializes the FcNet class.
+
+        config: a string representing the layer configurations of
+        the FcNet instance.
+
+        input_dim: a tuple representing the size of the tensors being
+        passed into the FcNet configuration.
+
+        classes: an integer representing the total amount of classes for
+        the output layer of the FcNet configuration.
+
+        dropout: a floating value representing the amount of inputs
+        to drop in the dropout layer. (default: 0.5).
+        """
+
         super(FcNet, self).__init__()
         self.config = config
         self.input_dim = np.prod(list(input_dim)) # ex (4, 4, 3) img -> 4 * 4 * 3 = 48
@@ -31,6 +53,12 @@ class FcNet(nn.Module):
         return out
 
     def build(self) -> nn.Sequential:
+        
+        """
+        Builds the layers based on the configuration
+        passed in the FcNet instance.
+        """
+
         layers = []
         config = fc_configs[self.config]
         for hidden_layer in config:
@@ -56,7 +84,28 @@ vgg_configs = {'11-layer': [64, 'pool', 128, 'pool', 256, 256, 'pool', 512, 512,
 
 class VggNet(nn.Module):
 
+    """
+    A class derived from nn.Module that implements
+    the VGG Network architectures.
+    """
+
     def __init__(self, config: str, channels: int, classes: int, dropout: float=0.5):
+
+        """
+        Initializes the VggNet class.
+
+        config: a string representing the configuration of
+        the VggNet instance.
+
+        channels: an integer depicting the amount of channels in
+        the input image.
+
+        classes: an integer representing the total amount of classes for
+        the output layer of the FcNet configuration.
+
+        dropout: a floating value representing the amount of inputs
+        to drop in the dropout layer. (default: 0.5).
+        """
 
         super(VggNet, self).__init__()
         self.channels = channels
@@ -91,6 +140,12 @@ class VggNet(nn.Module):
         return out
         
     def build(self):
+
+        """
+        Builds the layers based on the configuration
+        passed in the VggNet instance.
+        """
+
         self.layers = []
 
         for  layer in self.config:                
@@ -107,7 +162,21 @@ class VggNet(nn.Module):
 
 class LeNet5(nn.Module):
 
+    """
+    A class derived from nn.Module that implements 
+    the LeNet5 architectures.
+    """
+
     def __init__(self, channels: int, classes: int) -> None:
+
+        """
+        channels: an integer depicting the amount of channels in
+        the input image.
+
+        classes: an integer representing the total amount of classes for
+        the output layer of the FcNet configuration.
+        """
+
         super(LeNet5, self).__init__()
         self.channels = channels
         self.conv1 = nn.Conv2d(channels, 6, 5, 1)
@@ -138,7 +207,24 @@ class LeNet5(nn.Module):
 
 class AlexNet(nn.Module):
 
+    """
+    A class derived from nn.Module that
+    implements the AlexNet architecutre.
+    """
+
     def __init__(self, channels: int, classes: int, dropout: float=0.5) -> None:
+
+        """
+        channels: an integer depicting the amount of channels in
+        the input image.
+
+        classes: an integer representing the total amount of classes for
+        the output layer of the FcNet configuration.
+
+        dropout: a floating value representing the amount of inputs
+        to drop in the dropout layer. (default: 0.5).
+        """
+
         super(AlexNet, self).__init__()
         # conv layers
         self.conv1 = nn.Conv2d(channels, 96, 11, 4)
