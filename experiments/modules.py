@@ -219,7 +219,7 @@ def train(net_module: NetModule, trainloader: DataLoader, epochs: int, verbose: 
 
     net_module: the NetModule to train.
 
-    trainloader: the DataLoader of train on.
+    trainloader: the DataLoader to train on.
 
     epochs: an integer defining the the amount of
     times the NetModule trains of the entire DataLoader.
@@ -283,7 +283,7 @@ def test(net_module: NetModule, testloader: DataLoader, verbose: bool=True, devi
 
     net_module: the NetModule to test.
 
-    trainloader: the DataLoader of test on.
+    testloader: the DataLoader to test on.
 
     verbose: a boolean depicting whether to show metrics as 
     the NetModule is tested or not. (default: True which shows 

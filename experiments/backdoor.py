@@ -147,7 +147,7 @@ class Backdoor:
         dataloader_kwargs: the keyword arguments when retreiving the
         DataLoader for the specified NetModule(s). 
         (ex. net=0, dataloader_kwargs={batch_size: 32, shuffle: True}
-        creates DataLoader(self.cleantrain.get_dataloader(batch_size=32, shuffle=True))).
+        creates self.cleantrain.get_dataloader(batch_size=32, shuffle=True)).
         (see datasets EntitySet get_dataloader for more info).
         """
 
@@ -203,7 +203,7 @@ class Backdoor:
         dataloader_kwargs: the keyword arguments when retreiving the
         DataLoader for the specified NetModule(s). 
         (ex. net=0, dataloader_kwargs={batch_size: 32, shuffle: True}
-        creates DataLoader(self.cleantrain.get_dataloader(batch_size=32, shuffle=True))).
+        creates self.cleantest.get_dataloader(batch_size=32, shuffle=True)).
         (see datasets EntitySet get_dataloader for more info).
         """
 
